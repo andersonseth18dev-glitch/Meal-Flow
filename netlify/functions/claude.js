@@ -3,12 +3,11 @@ exports.handler = async function (event) {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  // Check if API key exists at all
   if (!process.env.ANTHROPIC_API_KEY) {
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "MISSING_API_KEY", message: "ANTHROPIC_API_KEY environment variable is not set in Netlify." }),
+      body: JSON.stringify({ error: "MISSING_API_KEY", message: "ANTHROPIC_API_KEY is not set in Netlify environment variables." }),
     };
   }
 
@@ -30,16 +29,13 @@ exports.handler = async function (event) {
     });
 
     const data = await response.json();
-
-    // If Anthropic returned an error, pass it through clearly
     if (data.error) {
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "ANTHROPIC_ERROR", message: data.error.message, type: data.error.type }),
+        body: JSON.stringify({ error: "ANTHROPIC_ERROR", message: data.error.message }),
       };
     }
-
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
