@@ -1,5 +1,25 @@
 import { useState, useMemo, useEffect } from "react";
 
+// ─── PHOTO CACHE ─────────────────────────────────────────────────────────────
+const photoCache = {};
+
+const fetchPhoto = async (recipeName) => {
+  if (photoCache[recipeName]) return photoCache[recipeName];
+  try {
+    const res = await fetch("/.netlify/functions/unsplash", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: recipeName }),
+    });
+    const data = await res.json();
+    if (data.url) {
+      photoCache[recipeName] = data;
+      return data;
+    }
+  } catch {}
+  return null;
+};
+
 const STORAGE_KEYS = { recipes:"mf_recipes2", mealPlan:"mf_mealplan2", users:"mf_users2", currentUser:"mf_currentuser2", checkedItems:"mf_checked2" };
 const load = (key, fallback) => { try { const v=localStorage.getItem(key); return v?JSON.parse(v):fallback; } catch { return fallback; } };
 const save = (key, val) => { try { localStorage.setItem(key,JSON.stringify(val)); } catch {} };
@@ -254,12 +274,41 @@ Category only from: Breakfast, Lunch, Dinner, Grilling, Kids Drinks, Adult Drink
   const modalBox = { background:C.card, borderRadius:18, width:"100%", maxWidth:500, margin:"20px 0", padding:24, border:`1px solid ${C.border}` };
   const tagStyle = (t) => ({ padding:"3px 8px", borderRadius:6, fontSize:11, fontWeight:700, background:tagColors[t]?.bg||"#1e2030", color:tagColors[t]?.text||"#94a3b8" });
 
-  const RecipeCard = ({r, onAdd, showSave=false}) => (
+  const RecipeCard = ({r, onAdd, showSave=false}) => {
+    const [photo, setPhoto] = useState(r.photo || null);
+    const [photoLoading, setPhotoLoading] = useState(false);
+
+    useEffect(() => {
+      if (!photo && !photoLoading) {
+        setPhotoLoading(true);
+        fetchPhoto(r.name).then(p => {
+          if (p) setPhoto(p);
+          setPhotoLoading(false);
+        });
+      }
+    }, [r.name]);
+
+    return (
     <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden", cursor:"pointer", transition:"all 0.2s" }}
       onClick={()=>{setSelectedRecipe(r);setRecipeServings(r.baseServings);}}
       onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.borderColor=C.accent+"66";}}
       onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor=C.border;}}>
-      <div style={{ textAlign:"center", fontSize:44, padding:"18px 0 8px" }}>{r.emoji}</div>
+      <div style={{ position:"relative", width:"100%", height:160, overflow:"hidden", background:C.surface }}>
+        {photo ? (
+          <>
+            <img src={photo.thumb || photo.url} alt={r.name}
+              style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+            <div style={{ position:"absolute", bottom:4, right:6, fontSize:9, color:"rgba(255,255,255,0.6)" }}>
+              📷 {photo.credit}
+            </div>
+          </>
+        ) : (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", fontSize:52 }}>
+            {photoLoading ? "⏳" : r.emoji}
+          </div>
+        )}
+        <div style={{ position:"absolute", top:8, left:8, fontSize:22, background:"rgba(0,0,0,0.45)", borderRadius:8, padding:"2px 8px" }}>{r.emoji}</div>
+      </div>
       <div style={{ padding:"0 14px 14px" }}>
         <div style={{ fontWeight:800, fontSize:15, marginBottom:3 }}>{r.name}</div>
         <div style={{ color:C.muted, fontSize:12, marginBottom:8, lineHeight:1.5 }}>{r.desc}</div>
@@ -288,7 +337,8 @@ Category only from: Breakfast, Lunch, Dinner, Grilling, Kids Drinks, Adult Drink
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   // ── RENDER ───────────────────────────────────────────────────────────────────
   return (
@@ -572,7 +622,18 @@ Category only from: Breakfast, Lunch, Dinner, Grilling, Kids Drinks, Adult Drink
         <div style={modal} onClick={()=>setSelectedRecipe(null)}>
           <div style={modalBox} onClick={e=>e.stopPropagation()}>
             <button style={ghostBtn} onClick={()=>setSelectedRecipe(null)}>← Back</button>
-            <div style={{ textAlign:"center", fontSize:56, margin:"12px 0 6px" }}>{selectedRecipe.emoji}</div>
+            {selectedRecipe && (() => {
+              const cached = photoCache[selectedRecipe.name];
+              return cached ? (
+                <div style={{ position:"relative", borderRadius:12, overflow:"hidden", marginBottom:12, height:200 }}>
+                  <img src={cached.url} alt={selectedRecipe.name} style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+                  <div style={{ position:"absolute", bottom:4, right:8, fontSize:10, color:"rgba(255,255,255,0.6)" }}>📷 {cached.credit}</div>
+                  <div style={{ position:"absolute", top:8, left:8, fontSize:28, background:"rgba(0,0,0,0.45)", borderRadius:8, padding:"2px 8px" }}>{selectedRecipe.emoji}</div>
+                </div>
+              ) : (
+                <div style={{ textAlign:"center", fontSize:56, margin:"12px 0 6px" }}>{selectedRecipe.emoji}</div>
+              );
+            })()}
             <div style={{ fontWeight:900, fontSize:22, marginBottom:4 }}>{selectedRecipe.name}</div>
             <div style={{ color:C.muted, fontSize:13, marginBottom:10, lineHeight:1.5 }}>{selectedRecipe.desc}</div>
             <div style={{ display:"flex", gap:14, fontSize:12, color:C.muted, marginBottom:10 }}>
