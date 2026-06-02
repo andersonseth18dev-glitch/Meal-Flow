@@ -2,17 +2,20 @@ exports.handler = async function (event) {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
-
   if (!process.env.ANTHROPIC_API_KEY) {
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "MISSING_API_KEY", message: "ANTHROPIC_API_KEY is not set in Netlify environment variables." }),
-    };
+    return { statusCode: 500, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "MISSING_API_KEY", message: "ANTHROPIC_API_KEY is not set." }) };
   }
-
   try {
-    const { prompt } = JSON.parse(event.body);
+    const { prompt, image } = JSON.parse(event.body);
+
+    // Build message content — support optional image
+    const messageContent = image
+      ? [
+          { type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } },
+          { type: "text", text: prompt }
+        ]
+      : prompt;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -24,28 +27,18 @@ exports.handler = async function (event) {
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 4000,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: messageContent }],
       }),
     });
 
     const data = await response.json();
     if (data.error) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: "ANTHROPIC_ERROR", message: data.error.message }),
-      };
+      return { statusCode: 400, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "ANTHROPIC_ERROR", message: data.error.message }) };
     }
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    };
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "FUNCTION_ERROR", message: err.message }),
-    };
+    return { statusCode: 500, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "FUNCTION_ERROR", message: err.message }) };
   }
 };
