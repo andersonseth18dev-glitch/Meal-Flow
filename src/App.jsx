@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { supabase } from "./supabase";
+import { SEED_RECIPES } from "./seedRecipes";
 
 // ─── PHOTO CACHE ──────────────────────────────────────────────────────────────
 const photoCache = {};
@@ -15,6 +16,7 @@ const fetchPhoto = async (recipeName) => {
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const CATEGORIES = ["All","Breakfast","Lunch","Dinner","Grilling","Kids Drinks","Adult Drinks","Snacks","Desserts"];
+const FAMILY_COLLECTIONS = ["None","Grandma's Kitchen","Dad's Specialties","Mom's Favorites","Family Classics","Holiday Recipes","Weekend Cookouts","Kids Favorites","Date Night","Quick & Easy","Secret Recipes"];
 const DIETS      = ["All","Keto","Vegetarian","Vegan","Gluten-Free","Dairy-Free","Paleo"];
 const DAYS       = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const MEAL_SLOTS = ["Breakfast","Lunch","Dinner"];
@@ -32,18 +34,6 @@ Tags only from: Keto, Vegetarian, Vegan, Gluten-Free, Dairy-Free, Paleo
 Category only from: Breakfast, Lunch, Dinner, Grilling, Kids Drinks, Adult Drinks, Snacks, Desserts
 Include at least 6 ingredients and 4 steps. Make nutrition realistic.`;
 
-const SEED_RECIPES = [
-  { id:"r1",name:"Grilled Lemon Herb Chicken",time:"30 min",base_servings:4,calories:320,protein:38,carbs:2,fat:16,tags:["Keto","Gluten-Free","Dairy-Free","Paleo"],category:"Grilling",emoji:"🍗",description:"Juicy, herby chicken that's weeknight-perfect and packed with protein.",ingredients:[{item:"Chicken breasts",qty:4,unit:"pieces"},{item:"Lemon juice",qty:3,unit:"tbsp"},{item:"Olive oil",qty:2,unit:"tbsp"},{item:"Garlic",qty:4,unit:"cloves"},{item:"Fresh rosemary",qty:2,unit:"sprigs"},{item:"Salt & pepper",qty:1,unit:"pinch"}],steps:["Marinate chicken in lemon, oil, garlic 20 min.","Grill 6–7 min per side.","Rest 5 min before slicing."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r2",name:"Avocado Black Bean Bowls",time:"15 min",base_servings:2,calories:480,protein:18,carbs:62,fat:22,tags:["Vegan","Vegetarian","Gluten-Free","Dairy-Free"],category:"Lunch",emoji:"🥑",description:"A colorful, filling bowl loaded with plant-based protein and healthy fats.",ingredients:[{item:"Black beans",qty:1,unit:"can"},{item:"Avocado",qty:2,unit:"whole"},{item:"Brown rice",qty:1,unit:"cup"},{item:"Lime juice",qty:2,unit:"tbsp"},{item:"Cilantro",qty:0.25,unit:"cup"},{item:"Cherry tomatoes",qty:1,unit:"cup"}],steps:["Cook rice per package.","Warm beans with cumin.","Slice avocado.","Assemble bowl, squeeze lime on top."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r3",name:"Keto Bacon Egg Cups",time:"20 min",base_servings:6,calories:210,protein:14,carbs:1,fat:17,tags:["Keto","Gluten-Free"],category:"Breakfast",emoji:"🥚",description:"Crispy bacon cups filled with runny eggs — the perfect low-carb breakfast.",ingredients:[{item:"Eggs",qty:6,unit:"large"},{item:"Bacon strips",qty:6,unit:"slices"},{item:"Cheddar cheese",qty:0.5,unit:"cup"},{item:"Chives",qty:2,unit:"tbsp"}],steps:["Preheat oven 375°F.","Line muffin tin with bacon.","Crack egg into each.","Top with cheese, bake 15 min."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r4",name:"Backyard BBQ Ribs",time:"3 hrs",base_servings:4,calories:680,protein:52,carbs:18,fat:44,tags:["Gluten-Free","Dairy-Free","Paleo"],category:"Grilling",emoji:"🍖",description:"Slow-smoked fall-off-the-bone ribs with a sticky sweet BBQ glaze.",ingredients:[{item:"Baby back ribs",qty:2,unit:"racks"},{item:"BBQ sauce",qty:1,unit:"cup"},{item:"Brown sugar",qty:2,unit:"tbsp"},{item:"Smoked paprika",qty:1,unit:"tbsp"},{item:"Garlic powder",qty:1,unit:"tsp"},{item:"Salt & pepper",qty:1,unit:"pinch"}],steps:["Rub ribs with spices and sugar.","Wrap in foil, bake 2.5 hrs at 300°F.","Unwrap, coat with BBQ sauce.","Grill 10 min per side until caramelized."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r5",name:"Strawberry Banana Smoothie",time:"5 min",base_servings:2,calories:180,protein:4,carbs:42,fat:1,tags:["Vegan","Vegetarian","Gluten-Free","Dairy-Free"],category:"Kids Drinks",emoji:"🍓",description:"Sweet, creamy and totally kid-approved — no added sugar needed!",ingredients:[{item:"Frozen strawberries",qty:1,unit:"cup"},{item:"Banana",qty:1,unit:"whole"},{item:"Almond milk",qty:1,unit:"cup"},{item:"Honey",qty:1,unit:"tbsp"},{item:"Vanilla extract",qty:0.5,unit:"tsp"}],steps:["Add all ingredients to blender.","Blend until smooth.","Pour into glasses and serve immediately."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r6",name:"Classic Margarita",time:"5 min",base_servings:1,calories:220,protein:0,carbs:14,fat:0,tags:["Vegan","Gluten-Free","Dairy-Free"],category:"Adult Drinks",emoji:"🍹",description:"Perfectly balanced tart and sweet — the ultimate summer cocktail.",ingredients:[{item:"Tequila",qty:2,unit:"oz"},{item:"Fresh lime juice",qty:1,unit:"oz"},{item:"Triple sec",qty:0.5,unit:"oz"},{item:"Salt",qty:1,unit:"pinch"},{item:"Lime wedge",qty:1,unit:"whole"},{item:"Ice",qty:1,unit:"cup"}],steps:["Salt the rim of a glass.","Combine tequila, lime juice, triple sec in shaker with ice.","Shake vigorously 15 seconds.","Strain into glass over ice, garnish with lime."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r7",name:"Garlic Butter Salmon",time:"20 min",base_servings:2,calories:410,protein:42,carbs:2,fat:26,tags:["Keto","Gluten-Free","Paleo"],category:"Dinner",emoji:"🐟",description:"Restaurant-quality salmon in 20 minutes flat.",ingredients:[{item:"Salmon fillets",qty:2,unit:"pieces"},{item:"Butter",qty:3,unit:"tbsp"},{item:"Garlic",qty:4,unit:"cloves"},{item:"Lemon",qty:1,unit:"whole"},{item:"Fresh dill",qty:2,unit:"tbsp"}],steps:["Season salmon with salt & pepper.","Sear skin-down 4 min.","Flip, add butter and garlic.","Baste 3 min, finish with lemon."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r8",name:"Smash Burgers",time:"15 min",base_servings:4,calories:580,protein:34,carbs:32,fat:36,tags:["Gluten-Free"],category:"Grilling",emoji:"🍔",description:"Ultra-crispy edges, juicy center — these beat any fast food burger.",ingredients:[{item:"80/20 ground beef",qty:1.5,unit:"lbs"},{item:"American cheese",qty:4,unit:"slices"},{item:"Brioche buns",qty:4,unit:"whole"},{item:"Butter",qty:2,unit:"tbsp"},{item:"Salt & pepper",qty:1,unit:"pinch"},{item:"Pickles & onion",qty:1,unit:"serving"}],steps:["Form beef into loose balls, don't pack tight.","Heat cast iron on grill until smoking hot.","Place ball on grill, smash flat with spatula.","Cook 2 min, flip, add cheese, cook 1 min.","Serve on toasted buttered buns."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r9",name:"Tropical Rum Punch",time:"5 min",base_servings:1,calories:240,protein:0,carbs:28,fat:0,tags:["Vegan","Gluten-Free","Dairy-Free"],category:"Adult Drinks",emoji:"🌴",description:"Taste the tropics — fruity, boozy, and perfect poolside.",ingredients:[{item:"White rum",qty:2,unit:"oz"},{item:"Pineapple juice",qty:2,unit:"oz"},{item:"Orange juice",qty:1,unit:"oz"},{item:"Grenadine",qty:0.5,unit:"oz"},{item:"Coconut cream",qty:1,unit:"tbsp"},{item:"Ice",qty:1,unit:"cup"}],steps:["Fill glass with ice.","Pour rum, pineapple juice, orange juice over ice.","Drizzle grenadine over top.","Stir gently and garnish with pineapple slice."],source:"built-in",imported_by_name:"Anderson Family" },
-  { id:"r10",name:"Watermelon Mint Lemonade",time:"10 min",base_servings:4,calories:90,protein:1,carbs:22,fat:0,tags:["Vegan","Gluten-Free","Dairy-Free"],category:"Kids Drinks",emoji:"🍉",description:"Refreshing summer sipper that kids go absolutely crazy for.",ingredients:[{item:"Watermelon",qty:4,unit:"cups"},{item:"Fresh lemon juice",qty:0.5,unit:"cup"},{item:"Mint leaves",qty:10,unit:"whole"},{item:"Honey",qty:2,unit:"tbsp"},{item:"Water",qty:2,unit:"cups"},{item:"Ice",qty:1,unit:"cup"}],steps:["Blend watermelon until smooth, strain.","Mix with lemon juice, honey, water.","Add mint and stir well.","Serve over ice."],source:"built-in",imported_by_name:"Anderson Family" },
-];
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const callClaude = async (prompt, image=null) => {
@@ -82,6 +72,7 @@ export default function App() {
   const [planPickerOpen,  setPlanPickerOpen]  = useState(null);
   const [toast,           setToast]           = useState(null);
 
+  const [activeCollection,setActiveCollection]= useState("All");
   const [aiQuery,         setAiQuery]         = useState("");
   const [aiLoading,       setAiLoading]       = useState(false);
   const [aiResults,       setAiResults]       = useState([]);
@@ -97,7 +88,7 @@ export default function App() {
   const [importLoading,   setImportLoading]   = useState(false);
   const [importResult,    setImportResult]    = useState(null);
   const [importError,     setImportError]     = useState("");
-  const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",category:"Dinner",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
+  const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",category:"Dinner",collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
 
   const [authMode,  setAuthMode]  = useState("login");
   const [authForm,  setAuthForm]  = useState({name:"",email:"",password:""});
@@ -155,7 +146,11 @@ export default function App() {
 
   const seedRecipes = async () => {
     const {error} = await supabase.from("recipes").upsert(SEED_RECIPES, {onConflict:"id"});
-    if(!error) { setRecipes(SEED_RECIPES); }
+    if(!error) {
+      const {data} = await supabase.from("recipes").select("*").order("created_at",{ascending:false});
+      if(data) setRecipes(data);
+      else setRecipes(SEED_RECIPES);
+    }
   };
 
   const loadRatings = async (recipeIds) => {
@@ -254,6 +249,7 @@ export default function App() {
       source: session?"community":"built-in",
       imported_by: session?session.user.id:null,
       imported_by_name: profile?.name||session?.user?.email?.split("@")[0]||"Anonymous",
+      collection: r.collection||"None",
     };
     const {error} = await supabase.from("recipes").insert(rec);
     if(error) { showToast("Error saving: "+error.message,"error"); return null; }
@@ -337,7 +333,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
     if(!r.ingredients.filter(i=>i.item.trim()).length) return setImportError("Add at least one ingredient.");
     if(!r.steps.filter(s=>s.trim()).length) return setImportError("Add at least one step.");
     const emojis={"Breakfast":"🌅","Lunch":"☀️","Dinner":"🍽️","Grilling":"🔥","Kids Drinks":"🧃","Adult Drinks":"🍹","Snacks":"🍿","Desserts":"🍰"};
-    saveRecipeToDB({...r,emoji:emojis[r.category]||"🍽️",desc:r.desc,ingredients:r.ingredients.filter(i=>i.item.trim()).map(i=>({...i,qty:isNaN(Number(i.qty))?i.qty:Number(i.qty)})),steps:r.steps.filter(s=>s.trim())});
+    saveRecipeToDB({...r,emoji:emojis[r.category]||"🍽️",desc:r.desc,collection:r.collection||"None",ingredients:r.ingredients.filter(i=>i.item.trim()).map(i=>({...i,qty:isNaN(Number(i.qty))?i.qty:Number(i.qty)})),steps:r.steps.filter(s=>s.trim())});
     resetImport();
   };
 
@@ -368,9 +364,10 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
   const filtered = useMemo(()=>recipes.filter(r=>{
     const dietMatch=activeDiet==="All"||(r.tags||[]).includes(activeDiet);
     const catMatch=activeCategory==="All"||r.category===activeCategory;
+    const colMatch=activeCollection==="All"||(r.collection||"None")===activeCollection;
     const srchMatch=(r.name||"").toLowerCase().includes(search.toLowerCase())||(r.description||"").toLowerCase().includes(search.toLowerCase());
-    return dietMatch&&catMatch&&srchMatch;
-  }),[recipes,activeDiet,activeCategory,search]);
+    return dietMatch&&catMatch&&colMatch&&srchMatch;
+  }),[recipes,activeDiet,activeCategory,activeCollection,search]);
 
   // ── STYLE HELPERS ─────────────────────────────────────────────────────────
   const currentServings = recipeServings ?? ((selectedRecipe?.base_servings||selectedRecipe?.baseServings)||4);
@@ -416,6 +413,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:showSave?10:0}}>
             {(r.tags||[]).map(t=><span key={t} style={tagStyle(t)}>{t}</span>)}
             <span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#DBEAFE",color:"#1D4ED8"}}>{r.category}</span>
+            {r.collection&&r.collection!=="None"&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF3CD",color:"#7A5800"}}>📚 {r.collection}</span>}
           </div>
           {showSave&&(
             <div style={{display:"flex",gap:6,marginTop:6}} onClick={e=>e.stopPropagation()}>
@@ -483,6 +481,10 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
             </div>
             <div style={{display:"flex",gap:6,overflowX:"auto",scrollbarWidth:"none",marginTop:8,paddingBottom:4}}>
               {CATEGORIES.map(c=><button key={c} style={pill(activeCategory===c,C.accent2)} onClick={()=>setActiveCategory(c)}>{CAT_EMOJI[c]} {c}</button>)}
+            </div>
+            <div style={{display:"flex",gap:6,overflowX:"auto",scrollbarWidth:"none",marginTop:8,paddingBottom:4}}>
+              <button key="all-col" style={pill(activeCollection==="All",C.gold)} onClick={()=>setActiveCollection("All")}>📚 All Collections</button>
+              {FAMILY_COLLECTIONS.filter(c=>c!=="None").map(c=><button key={c} style={pill(activeCollection===c,C.gold)} onClick={()=>setActiveCollection(c)}>{c}</button>)}
             </div>
             <div style={{fontSize:12,color:C.muted,marginTop:8,fontWeight:600}}>{loading?"Loading recipes...":filtered.length+" recipe"+(filtered.length!==1?"s":"")+" found"}</div>
           </div>
@@ -672,9 +674,10 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
               {!session&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>Sign in to rate this recipe</div>}
             </div>
 
-            <div style={{display:"flex",gap:14,fontSize:12,color:C.muted,marginBottom:10}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:12,color:C.muted,marginBottom:10,alignItems:"center"}}>
               <span>⏱ {selectedRecipe.time}</span><span>🔥 {scaledNutrition(selectedRecipe,currentServings).calories} cal</span>
               <span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#DBEAFE",color:"#1D4ED8"}}>{selectedRecipe.category}</span>
+              {selectedRecipe.collection&&selectedRecipe.collection!=="None"&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF3CD",color:"#7A5800"}}>📚 {selectedRecipe.collection}</span>}
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:16}}>
               {(selectedRecipe.tags||[]).map(t=><span key={t} style={tagStyle(t)}>{t}</span>)}
@@ -800,6 +803,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                   <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Carbs (g)</div><input style={{...inputStyle,marginBottom:0}} type="number" placeholder="30" value={manualRecipe.carbs} onChange={e=>setManualRecipe(p=>({...p,carbs:e.target.value}))}/></div>
                   <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Fat (g)</div><input style={{...inputStyle,marginBottom:0}} type="number" placeholder="12" value={manualRecipe.fat} onChange={e=>setManualRecipe(p=>({...p,fat:e.target.value}))}/></div>
                   <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Category</div><select style={{...inputStyle,marginBottom:0}} value={manualRecipe.category} onChange={e=>setManualRecipe(p=>({...p,category:e.target.value}))}>{["Breakfast","Lunch","Dinner","Grilling","Kids Drinks","Adult Drinks","Snacks","Desserts"].map(c=><option key={c}>{c}</option>)}</select></div>
+                  <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Family Collection</div><select style={{...inputStyle,marginBottom:0}} value={manualRecipe.collection} onChange={e=>setManualRecipe(p=>({...p,collection:e.target.value}))}>{FAMILY_COLLECTIONS.map(c=><option key={c}>{c}</option>)}</select></div>
                   <div style={{gridColumn:"1/-1"}}><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Description</div><input style={{...inputStyle,marginBottom:0}} placeholder="Short description" value={manualRecipe.desc} onChange={e=>setManualRecipe(p=>({...p,desc:e.target.value}))}/></div>
                 </div>
                 <div style={{fontSize:12,color:C.muted,marginBottom:6,fontWeight:600}}>Diet Tags</div>
