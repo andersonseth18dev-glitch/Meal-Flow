@@ -81,10 +81,15 @@ export default function App() {
 
   // Import state
   const [importOpen,    setImportOpen]    = useState(false);
+  const [importMode,    setImportMode]    = useState("menu"); // menu | url | text | describe | manual | photo
   const [importUrl,     setImportUrl]     = useState("");
+  const [importText,    setImportText]    = useState("");
+  const [importDescribe,setImportDescribe]= useState("");
+  const [importPhoto,   setImportPhoto]   = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importResult,  setImportResult]  = useState(null);
   const [importError,   setImportError]   = useState("");
+  const [manualRecipe,  setManualRecipe]  = useState({ name:"", time:"", baseServings:4, calories:"", protein:"", carbs:"", fat:"", category:"Dinner", tags:[], desc:"", ingredients:[{item:"",qty:"",unit:""}], steps:[""] });
 
   useEffect(() => save(STORAGE_KEYS.recipes,     recipes),     [recipes]);
   useEffect(() => save(STORAGE_KEYS.mealPlan,    mealPlan),    [mealPlan]);
@@ -329,16 +334,8 @@ Rules:
     showToast(`${recipe.emoji} "${recipe.name}" saved to your recipes!`);
   };
 
-  // ── URL IMPORT ──────────────────────────────────────────────────────────────
-  const importRecipe = async () => {
-    if (!importUrl.trim()) return;
-    setImportLoading(true); setImportError(""); setImportResult(null);
-    try {
-      const prompt = `You are a recipe extraction assistant. The user wants to import a recipe from: ${importUrl}
-
-Generate a detailed realistic recipe matching what that URL would contain.
-
-Return ONLY valid JSON (no markdown, no backticks):
+  // ── SHARED IMPORT HELPERS ───────────────────────────────────────────────────
+  const RECIPE_JSON_SPEC = `Return ONLY valid JSON (no markdown, no backticks, no extra text):
 {
   "name": "Recipe Name",
   "time": "X min",
@@ -350,30 +347,137 @@ Return ONLY valid JSON (no markdown, no backticks):
   "tags": ["Gluten-Free"],
   "category": "Dinner",
   "emoji": "🍽️",
-  "desc": "Short appetizing description.",
-  "ingredients": [{"item": "name", "qty": 2, "unit": "cups"}],
-  "steps": ["Step 1.", "Step 2.", "Step 3.", "Step 4."]
+  "desc": "Short appetizing description under 20 words.",
+  "ingredients": [{"item": "ingredient name", "qty": 2, "unit": "cups"}],
+  "steps": ["Step 1 with detail.", "Step 2.", "Step 3.", "Step 4."]
 }
 Tags only from: Keto, Vegetarian, Vegan, Gluten-Free, Dairy-Free, Paleo
-Category only from: Breakfast, Lunch, Dinner, Grilling, Kids Drinks, Adult Drinks, Snacks, Desserts`;
+Category only from: Breakfast, Lunch, Dinner, Grilling, Kids Drinks, Adult Drinks, Snacks, Desserts
+Include at least 6 ingredients and 4 steps. Make nutrition realistic.`;
 
-      const res = await fetch("/.netlify/functions/claude", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ prompt })
-      });
-      const data = await res.json();
-      const text = data.content?.find(b=>b.type==="text")?.text||"";
-      const clean = text.replace(/```json|```/g,"").trim();
-      setImportResult({...JSON.parse(clean), id:"r"+Date.now(), source:importUrl});
-    } catch { setImportError("Couldn't parse that URL. Try a direct recipe link."); }
-    setImportLoading(false);
+  const callClaude = async (prompt) => {
+    const res = await fetch("/.netlify/functions/claude", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.message || data.error);
+    const text = data.content?.find(b=>b.type==="text")?.text||"";
+    if (!text) throw new Error("Empty response from AI");
+    return text.replace(/```json|```/g,"").trim();
   };
 
   const confirmImport = () => {
     if (!importResult) return;
-    setRecipes(prev=>[...prev,importResult]);
-    showToast(`${importResult.emoji} "${importResult.name}" imported!`);
-    setImportOpen(false); setImportUrl(""); setImportResult(null);
+    setRecipes(prev=>[...prev, importResult]);
+    showToast(`${importResult.emoji} "${importResult.name}" added!`);
+    resetImport();
+  };
+
+  const resetImport = () => {
+    setImportOpen(false); setImportMode("menu");
+    setImportUrl(""); setImportText(""); setImportDescribe(""); setImportPhoto(null);
+    setImportResult(null); setImportError("");
+    setManualRecipe({ name:"", time:"", baseServings:4, calories:"", protein:"", carbs:"", fat:"", category:"Dinner", tags:[], desc:"", ingredients:[{item:"",qty:"",unit:""}], steps:[""] });
+  };
+
+  // ── URL IMPORT ───────────────────────────────────────────────────────────────
+  const importByUrl = async () => {
+    if (!importUrl.trim()) return;
+    setImportLoading(true); setImportError(""); setImportResult(null);
+    try {
+      const prompt = `You are a recipe extraction assistant. The user wants to import a recipe from: ${importUrl}
+Generate a detailed realistic recipe matching what that URL would contain.
+${RECIPE_JSON_SPEC}`;
+      const clean = await callClaude(prompt);
+      setImportResult({...JSON.parse(clean), id:"r"+Date.now(), source:importUrl});
+    } catch(e) { setImportError("Couldn't read that URL: " + e.message); }
+    setImportLoading(false);
+  };
+
+  // ── TEXT PASTE IMPORT ────────────────────────────────────────────────────────
+  const importByText = async () => {
+    if (!importText.trim()) return;
+    setImportLoading(true); setImportError(""); setImportResult(null);
+    try {
+      const prompt = `You are a recipe parser. The user has pasted the following recipe text. Extract and structure it into a proper recipe.
+RECIPE TEXT:
+${importText}
+
+${RECIPE_JSON_SPEC}`;
+      const clean = await callClaude(prompt);
+      setImportResult({...JSON.parse(clean), id:"r"+Date.now(), source:"text-import"});
+    } catch(e) { setImportError("Couldn't parse that text: " + e.message); }
+    setImportLoading(false);
+  };
+
+  // ── DESCRIBE IMPORT ──────────────────────────────────────────────────────────
+  const importByDescribe = async () => {
+    if (!importDescribe.trim()) return;
+    setImportLoading(true); setImportError(""); setImportResult(null);
+    try {
+      const prompt = `You are a professional chef and recipe writer. The user has described a dish they want a recipe for. Create a complete, detailed, and accurate recipe based on their description.
+USER DESCRIPTION: "${importDescribe}"
+${RECIPE_JSON_SPEC}`;
+      const clean = await callClaude(prompt);
+      setImportResult({...JSON.parse(clean), id:"r"+Date.now(), source:"ai-created"});
+    } catch(e) { setImportError("Couldn't generate recipe: " + e.message); }
+    setImportLoading(false);
+  };
+
+  // ── PHOTO IMPORT ─────────────────────────────────────────────────────────────
+  const importByPhoto = async () => {
+    if (!importPhoto) return;
+    setImportLoading(true); setImportError(""); setImportResult(null);
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result.split(",")[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(importPhoto);
+      });
+      const mediaType = importPhoto.type || "image/jpeg";
+      const res = await fetch("/.netlify/functions/claude", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          prompt: `You are a recipe extraction assistant. The user has uploaded a photo of a recipe (from a cookbook, recipe card, handwritten note, or screen). Read the recipe from the image carefully and extract all the details.
+${RECIPE_JSON_SPEC}`,
+          image: { base64, mediaType }
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.message || data.error);
+      const text = data.content?.find(b=>b.type==="text")?.text||"";
+      const clean = text.replace(/```json|```/g,"").trim();
+      setImportResult({...JSON.parse(clean), id:"r"+Date.now(), source:"photo-import"});
+    } catch(e) { setImportError("Couldn't read that photo: " + e.message); }
+    setImportLoading(false);
+  };
+
+  // ── MANUAL IMPORT ────────────────────────────────────────────────────────────
+  const confirmManual = () => {
+    const r = manualRecipe;
+    if (!r.name.trim()) return setImportError("Please enter a recipe name.");
+    if (r.ingredients.filter(i=>i.item.trim()).length === 0) return setImportError("Please add at least one ingredient.");
+    if (r.steps.filter(s=>s.trim()).length === 0) return setImportError("Please add at least one step.");
+    const emojis = {"Breakfast":"🌅","Lunch":"☀️","Dinner":"🍽️","Grilling":"🔥","Kids Drinks":"🧃","Adult Drinks":"🍹","Snacks":"🍿","Desserts":"🍰"};
+    const finalRecipe = {
+      ...r,
+      id: "r"+Date.now(),
+      emoji: emojis[r.category] || "🍽️",
+      source: "manual",
+      baseServings: Number(r.baseServings)||4,
+      calories: Number(r.calories)||0,
+      protein: Number(r.protein)||0,
+      carbs: Number(r.carbs)||0,
+      fat: Number(r.fat)||0,
+      ingredients: r.ingredients.filter(i=>i.item.trim()).map(i=>({...i, qty:isNaN(Number(i.qty))?i.qty:Number(i.qty)})),
+      steps: r.steps.filter(s=>s.trim()),
+      tags: r.tags,
+    };
+    setRecipes(prev=>[...prev, finalRecipe]);
+    showToast(`${finalRecipe.emoji} "${finalRecipe.name}" added!`);
+    resetImport();
   };
 
   // ── STYLE HELPERS ────────────────────────────────────────────────────────────
@@ -849,25 +953,215 @@ Category only from: Breakfast, Lunch, Dinner, Grilling, Kids Drinks, Adult Drink
 
       {/* ── IMPORT MODAL ── */}
       {importOpen&&(
-        <div style={modal} onClick={()=>{setImportOpen(false);setImportResult(null);setImportUrl("");}}>
-          <div style={modalBox} onClick={e=>e.stopPropagation()}>
-            <button style={ghostBtn} onClick={()=>{setImportOpen(false);setImportResult(null);setImportUrl("");}}>✕ Close</button>
-            <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>🔗 Import by URL</div>
-            <div style={{ color:C.muted, fontSize:13, marginBottom:16 }}>Paste any recipe URL and AI will extract it for you.</div>
-            <input style={inputStyle} placeholder="https://www.allrecipes.com/recipe/..." value={importUrl} onChange={e=>setImportUrl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&importRecipe()}/>
-            {importError&&<div style={{ color:C.red, fontSize:13, marginBottom:8 }}>{importError}</div>}
-            <button style={{ ...btnStyle(), width:"100%", padding:"12px 0", marginBottom:16, opacity:importLoading?0.6:1 }} onClick={importRecipe} disabled={importLoading}>{importLoading?"🔄 Importing...":"✨ Import Recipe"}</button>
-            {importResult&&(
-              <div style={{ background:C.surface, borderRadius:12, padding:16, border:`1px solid ${C.green}44` }}>
-                <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:10 }}>
-                  <span style={{ fontSize:32 }}>{importResult.emoji}</span>
+        <div style={modal} onClick={resetImport}>
+          <div style={{ ...modalBox, maxWidth:560 }} onClick={e=>e.stopPropagation()}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+              <div style={{ fontWeight:900, fontSize:18 }}>
+                {importMode==="menu" && "➕ Add a Recipe"}
+                {importMode==="url" && "🔗 Import by URL"}
+                {importMode==="text" && "📋 Paste Recipe Text"}
+                {importMode==="describe" && "🎤 Describe a Dish"}
+                {importMode==="photo" && "📸 Photo of Recipe"}
+                {importMode==="manual" && "📝 Manual Entry"}
+              </div>
+              <button style={ghostBtn} onClick={resetImport}>✕</button>
+            </div>
+
+            {/* Back button for sub-modes */}
+            {importMode!=="menu" && !importResult && (
+              <button style={{ ...ghostBtn, fontSize:12, padding:"6px 12px", marginBottom:14 }} onClick={()=>{setImportMode("menu");setImportError("");}}>← Back</button>
+            )}
+
+            {/* ── MENU ── */}
+            {importMode==="menu" && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                {[
+                  { mode:"url",      emoji:"🔗", title:"Import by URL",       desc:"Paste an AllRecipes, Food Network, or any recipe link" },
+                  { mode:"text",     emoji:"📋", title:"Paste Recipe Text",   desc:"Copy text from anywhere and AI formats it" },
+                  { mode:"describe", emoji:"🎤", title:"Describe a Dish",     desc:"Tell AI what you want and it builds the full recipe" },
+                  { mode:"photo",    emoji:"📸", title:"Photo of Recipe",     desc:"Snap a pic of a cookbook, card, or handwritten recipe" },
+                  { mode:"manual",   emoji:"📝", title:"Manual Entry",        desc:"Type in your own recipe from scratch" },
+                ].map(opt=>(
+                  <div key={opt.mode} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"16px 14px", cursor:"pointer", transition:"all 0.15s" }}
+                    onClick={()=>setImportMode(opt.mode)}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor=C.accent;e.currentTarget.style.background=C.card;}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.background=C.surface;}}>
+                    <div style={{ fontSize:28, marginBottom:6 }}>{opt.emoji}</div>
+                    <div style={{ fontWeight:800, fontSize:14, marginBottom:3 }}>{opt.title}</div>
+                    <div style={{ fontSize:11, color:C.muted, lineHeight:1.4 }}>{opt.desc}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── URL MODE ── */}
+            {importMode==="url" && !importResult && (
+              <>
+                <div style={{ color:C.muted, fontSize:13, marginBottom:12 }}>Paste any recipe page URL and AI will extract all the details.</div>
+                <input style={inputStyle} placeholder="https://www.allrecipes.com/recipe/..." value={importUrl} onChange={e=>setImportUrl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&importByUrl()}/>
+                {importError&&<div style={{ color:C.red, fontSize:13, marginBottom:8 }}>{importError}</div>}
+                <button style={{ ...btnStyle(), width:"100%", padding:"12px 0", opacity:importLoading?0.6:1 }} onClick={importByUrl} disabled={importLoading}>{importLoading?"🔄 Reading URL...":"✨ Import Recipe"}</button>
+              </>
+            )}
+
+            {/* ── TEXT MODE ── */}
+            {importMode==="text" && !importResult && (
+              <>
+                <div style={{ color:C.muted, fontSize:13, marginBottom:12 }}>Copy and paste any recipe text — from a website, email, notes app, anywhere.</div>
+                  <textarea style={{ ...inputStyle, height:180, resize:"vertical", fontFamily:"inherit" }} placeholder="Paste any recipe text here — ingredients, steps, everything..." value={importText} onChange={e=>setImportText(e.target.value)}/>
+                {importError&&<div style={{ color:C.red, fontSize:13, marginBottom:8 }}>{importError}</div>}
+                <button style={{ ...btnStyle(), width:"100%", padding:"12px 0", opacity:importLoading?0.6:1 }} onClick={importByText} disabled={importLoading}>{importLoading?"🔄 Parsing text...":"✨ Format & Import"}</button>
+              </>
+            )}
+
+            {/* ── DESCRIBE MODE ── */}
+            {importMode==="describe" && !importResult && (
+              <>
+                <div style={{ color:C.muted, fontSize:13, marginBottom:12 }}>Describe a dish in plain English — as simple or detailed as you want. AI builds the full recipe.</div>
+                  <textarea style={{ ...inputStyle, height:120, resize:"vertical", fontFamily:"inherit" }} placeholder="e.g. My grandma's spicy chicken tortilla soup, or a keto grilled salmon ready in 20 min, or something my kids will eat with ground beef" value={importDescribe} onChange={e=>setImportDescribe(e.target.value)}/>
+                {importError&&<div style={{ color:C.red, fontSize:13, marginBottom:8 }}>{importError}</div>}
+                <button style={{ ...btnStyle(), width:"100%", padding:"12px 0", opacity:importLoading?0.6:1 }} onClick={importByDescribe} disabled={importLoading}>{importLoading?"🔄 Creating recipe...":"✨ Generate Recipe"}</button>
+              </>
+            )}
+
+            {/* ── PHOTO MODE ── */}
+            {importMode==="photo" && !importResult && (
+              <>
+                <div style={{ color:C.muted, fontSize:13, marginBottom:12 }}>Take a photo of any recipe — cookbook page, recipe card, handwritten note, or screen. AI will read and import it.</div>
+                <div style={{ border:`2px dashed ${importPhoto?C.green:C.border}`, borderRadius:12, padding:"24px 16px", textAlign:"center", marginBottom:12, cursor:"pointer", background:importPhoto?`${C.green}11`:C.surface }}
+                  onClick={()=>document.getElementById("photoInput").click()}>
+                  {importPhoto ? (
+                    <>
+                      <div style={{ fontSize:32, marginBottom:6 }}>✅</div>
+                      <div style={{ fontWeight:700, fontSize:14 }}>{importPhoto.name}</div>
+                      <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>Tap to change photo</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:40, marginBottom:8 }}>📸</div>
+                      <div style={{ fontWeight:700, fontSize:15 }}>Tap to choose photo</div>
+                      <div style={{ fontSize:12, color:C.muted, marginTop:4 }}>JPG, PNG, HEIC supported · Works great with cookbook photos!</div>
+                    </>
+                  )}
+                </div>
+                <input id="photoInput" type="file" accept="image/*" style={{ display:"none" }} onChange={e=>setImportPhoto(e.target.files[0])}/>
+                {importError&&<div style={{ color:C.red, fontSize:13, marginBottom:8 }}>{importError}</div>}
+                <button style={{ ...btnStyle(), width:"100%", padding:"12px 0", opacity:(importLoading||!importPhoto)?0.6:1 }} onClick={importByPhoto} disabled={importLoading||!importPhoto}>{importLoading?"🔄 Reading photo...":"✨ Extract Recipe from Photo"}</button>
+              </>
+            )}
+
+            {/* ── MANUAL MODE ── */}
+            {importMode==="manual" && !importResult && (
+              <div style={{ maxHeight:"65vh", overflowY:"auto", paddingRight:4 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+                  <div style={{ gridColumn:"1/-1" }}>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Recipe Name *</div>
+                    <input style={{ ...inputStyle, marginBottom:0 }} placeholder="e.g. Mom's Lasagna" value={manualRecipe.name} onChange={e=>setManualRecipe(p=>({...p,name:e.target.value}))}/>
+                  </div>
                   <div>
-                    <div style={{ fontWeight:800, fontSize:15 }}>{importResult.name}</div>
-                    <div style={{ fontSize:12, color:C.muted }}>{importResult.time} · {importResult.calories} cal</div>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Cook Time</div>
+                    <input style={{ ...inputStyle, marginBottom:0 }} placeholder="e.g. 45 min" value={manualRecipe.time} onChange={e=>setManualRecipe(p=>({...p,time:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Servings</div>
+                    <input style={{ ...inputStyle, marginBottom:0 }} type="number" min="1" placeholder="4" value={manualRecipe.baseServings} onChange={e=>setManualRecipe(p=>({...p,baseServings:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Calories (per serving)</div>
+                    <input style={{ ...inputStyle, marginBottom:0 }} type="number" placeholder="350" value={manualRecipe.calories} onChange={e=>setManualRecipe(p=>({...p,calories:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Protein (g)</div>
+                    <input style={{ ...inputStyle, marginBottom:0 }} type="number" placeholder="25" value={manualRecipe.protein} onChange={e=>setManualRecipe(p=>({...p,protein:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Carbs (g)</div>
+                    <input style={{ ...inputStyle, marginBottom:0 }} type="number" placeholder="30" value={manualRecipe.carbs} onChange={e=>setManualRecipe(p=>({...p,carbs:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Fat (g)</div>
+                    <input style={{ ...inputStyle, marginBottom:0 }} type="number" placeholder="12" value={manualRecipe.fat} onChange={e=>setManualRecipe(p=>({...p,fat:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Category</div>
+                    <select style={{ ...inputStyle, marginBottom:0 }} value={manualRecipe.category} onChange={e=>setManualRecipe(p=>({...p,category:e.target.value}))}>
+                      {["Breakfast","Lunch","Dinner","Grilling","Kids Drinks","Adult Drinks","Snacks","Desserts"].map(c=><option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ gridColumn:"1/-1" }}>
+                    <div style={{ fontSize:12, color:C.muted, marginBottom:4, fontWeight:600 }}>Description</div>
+                    <input style={{ ...inputStyle, marginBottom:0 }} placeholder="Short description of the recipe" value={manualRecipe.desc} onChange={e=>setManualRecipe(p=>({...p,desc:e.target.value}))}/>
                   </div>
                 </div>
-                <div style={{ fontSize:12, color:C.green, marginBottom:12 }}>✓ {importResult.ingredients.length} ingredients · {importResult.steps.length} steps</div>
-                <button style={{ ...btnStyle(C.green), width:"100%", padding:"10px 0" }} onClick={confirmImport}>Add to My Recipes →</button>
+
+                {/* Diet tags */}
+                <div style={{ fontSize:12, color:C.muted, marginBottom:6, fontWeight:600 }}>Diet Tags</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14 }}>
+                  {["Keto","Vegetarian","Vegan","Gluten-Free","Dairy-Free","Paleo"].map(t=>{
+                    const on=manualRecipe.tags.includes(t);
+                    return <button key={t} style={{ padding:"4px 10px", borderRadius:20, border:`1px solid ${on?C.green:C.border}`, background:on?`${C.green}22`:"transparent", color:on?C.green:C.muted, fontSize:12, cursor:"pointer", fontWeight:600 }}
+                      onClick={()=>setManualRecipe(p=>({...p,tags:on?p.tags.filter(x=>x!==t):[...p.tags,t]}))}>
+                      {on?"✓ ":""}{t}
+                    </button>;
+                  })}
+                </div>
+
+                {/* Ingredients */}
+                <div style={{ fontSize:12, color:C.muted, marginBottom:6, fontWeight:600 }}>Ingredients *</div>
+                {manualRecipe.ingredients.map((ing, i)=>(
+                  <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr 60px 70px 24px", gap:6, marginBottom:6 }}>
+                    <input style={{ ...inputStyle, marginBottom:0 }} placeholder="Ingredient" value={ing.item} onChange={e=>setManualRecipe(p=>({...p,ingredients:p.ingredients.map((x,j)=>j===i?{...x,item:e.target.value}:x)}))}/>
+                    <input style={{ ...inputStyle, marginBottom:0 }} placeholder="Qty" value={ing.qty} onChange={e=>setManualRecipe(p=>({...p,ingredients:p.ingredients.map((x,j)=>j===i?{...x,qty:e.target.value}:x)}))}/>
+                    <input style={{ ...inputStyle, marginBottom:0 }} placeholder="Unit" value={ing.unit} onChange={e=>setManualRecipe(p=>({...p,ingredients:p.ingredients.map((x,j)=>j===i?{...x,unit:e.target.value}:x)}))}/>
+                    <button style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16 }} onClick={()=>setManualRecipe(p=>({...p,ingredients:p.ingredients.filter((_,j)=>j!==i)}))}>×</button>
+                  </div>
+                ))}
+                <button style={{ ...ghostBtn, fontSize:12, padding:"6px 14px", marginBottom:14 }} onClick={()=>setManualRecipe(p=>({...p,ingredients:[...p.ingredients,{item:"",qty:"",unit:""}]}))}>+ Add Ingredient</button>
+
+                {/* Steps */}
+                <div style={{ fontSize:12, color:C.muted, marginBottom:6, fontWeight:600 }}>Steps *</div>
+                {manualRecipe.steps.map((step, i)=>(
+                  <div key={i} style={{ display:"flex", gap:8, marginBottom:6, alignItems:"flex-start" }}>
+                    <div style={{ width:24, height:24, background:C.accent, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:900, color:"#fff", flexShrink:0, marginTop:8 }}>{i+1}</div>
+                    <textarea style={{ ...inputStyle, marginBottom:0, flex:1, height:60, resize:"vertical", fontFamily:"inherit" }} placeholder={`Step ${i+1}`} value={step} onChange={e=>setManualRecipe(p=>({...p,steps:p.steps.map((x,j)=>j===i?e.target.value:x)}))}/>
+                    <button style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:16, marginTop:8 }} onClick={()=>setManualRecipe(p=>({...p,steps:p.steps.filter((_,j)=>j!==i)}))}>×</button>
+                  </div>
+                ))}
+                <button style={{ ...ghostBtn, fontSize:12, padding:"6px 14px", marginBottom:14 }} onClick={()=>setManualRecipe(p=>({...p,steps:[...p.steps,""]}))}>+ Add Step</button>
+
+                {importError&&<div style={{ color:C.red, fontSize:13, marginBottom:8 }}>{importError}</div>}
+                <button style={{ ...btnStyle(C.green), width:"100%", padding:"12px 0" }} onClick={confirmManual}>💾 Save Recipe</button>
+              </div>
+            )}
+
+            {/* ── LOADING STATE ── */}
+            {importLoading && importMode!=="manual" && (
+              <div style={{ textAlign:"center", padding:"30px 0" }}>
+                <div style={{ fontSize:40, marginBottom:10 }}>👨‍🍳</div>
+                <div style={{ fontWeight:700 }}>AI is working on it...</div>
+                <div style={{ fontSize:13, color:C.muted, marginTop:4 }}>This takes about 5-10 seconds</div>
+              </div>
+            )}
+
+            {/* ── RESULT PREVIEW ── */}
+            {importResult && (
+              <div style={{ background:C.surface, borderRadius:12, padding:16, border:`1px solid ${C.green}44` }}>
+                <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:10 }}>
+                  <span style={{ fontSize:36 }}>{importResult.emoji}</span>
+                  <div>
+                    <div style={{ fontWeight:800, fontSize:16 }}>{importResult.name}</div>
+                    <div style={{ fontSize:12, color:C.muted }}>{importResult.time} · {importResult.calories} cal · {importResult.baseServings} servings</div>
+                    <div style={{ fontSize:12, color:C.muted }}>P:{importResult.protein}g · C:{importResult.carbs}g · F:{importResult.fat}g</div>
+                  </div>
+                </div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:10 }}>
+                  {importResult.tags?.map(t=><span key={t} style={{ padding:"3px 8px", borderRadius:6, fontSize:11, fontWeight:700, background:tagColors[t]?.bg||"#1e2030", color:tagColors[t]?.text||"#94a3b8" }}>{t}</span>)}
+                </div>
+                <div style={{ fontSize:12, color:C.green, marginBottom:14 }}>✓ {importResult.ingredients?.length} ingredients · {importResult.steps?.length} steps ready to go!</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button style={{ ...ghostBtn, flex:1 }} onClick={()=>setImportResult(null)}>← Try again</button>
+                  <button style={{ ...btnStyle(C.green), flex:2, padding:"10px 0" }} onClick={confirmImport}>Add to My Recipes →</button>
+                </div>
               </div>
             )}
           </div>
