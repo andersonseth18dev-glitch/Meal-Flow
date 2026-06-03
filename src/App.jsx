@@ -81,6 +81,7 @@ export default function App() {
 
   const [activeCollection,setActiveCollection]= useState("All");
   const [sidebarOpen,     setSidebarOpen]     = useState(true);
+  const [tourStep,        setTourStep]        = useState(0);
   const [aiQuery,         setAiQuery]         = useState("");
   const [aiLoading,       setAiLoading]       = useState(false);
   const [aiResults,       setAiResults]       = useState([]);
@@ -538,8 +539,8 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           </div>
         </div>
         <div style={{display:"flex",gap:4,marginTop:12,overflowX:"auto",scrollbarWidth:"none"}}>
-          {[["home","🍽️ Recipes"],["search","🤖 AI Search"],["planner","📅 Plan"],["grocery","🛒 Groceries"],["profile","👤 Profile"]].map(([id,label])=>(
-            <button key={id} style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s",background:screen===id?"rgba(255,255,255,0.2)":"transparent",color:"#FFFFFF",opacity:screen===id?1:0.72,whiteSpace:"nowrap",border:screen===id?"1px solid rgba(255,255,255,0.25)":"1px solid transparent"}} onClick={()=>setScreen(id)}>
+          {[["home","🍽️ Recipes"],["search","🤖 AI Search"],["planner","📅 Plan"],["grocery","🛒 Groceries"],["profile","👤 Profile"],["tour","❓ Guide"]].map(([id,label])=>(
+            <button key={id} style={{padding:"7px 14px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s",background:screen===id?"rgba(255,255,255,0.2)":"transparent",color:"#FFFFFF",opacity:screen===id?1:0.72,whiteSpace:"nowrap",border:screen===id?"1px solid rgba(255,255,255,0.25)":"1px solid transparent"}} onClick={()=>setScreen(id)}>
               {label}{id==="planner"&&plannedCount>0?<span style={{marginLeft:5,background:"rgba(255,255,255,0.3)",borderRadius:10,padding:"1px 6px",fontSize:10,color:"#fff"}}>{plannedCount}</span>:null}
             </button>
           ))}
@@ -802,6 +803,348 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           )}
         </div>
       )}
+
+
+      {/* ── TOUR / GUIDE SCREEN ── */}
+      {screen==="tour"&&(()=>{
+        const steps = [
+          {
+            icon:"🏡", title:"Welcome to Anderson Heirloom Recipes",
+            subtitle:"Your family's recipe hub — let us show you around!",
+            content: (
+              <div>
+                <p style={{fontSize:14,color:C.muted,lineHeight:1.8,marginBottom:16}}>This app is built for the whole Anderson family. Store recipes, plan your meals, build grocery lists, and preserve family classics — all in one place.</p>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  {[{e:"🍽️",t:"70+ recipes",s:"Ready to browse"},{e:"🤖",t:"AI Search",s:"Unlimited recipes"},{e:"📅",t:"Meal Planner",s:"Plan your week"},{e:"🛒",t:"Grocery List",s:"Auto-generated"},{e:"📚",t:"Collections",s:"Grandma's, Dad's..."},{e:"👤",t:"Accounts",s:"Sync anywhere"}].map(f=>(
+                    <div key={f.t} style={{background:"#F0F7F3",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"center",border:`1px solid #C5DDD3`}}>
+                      <span style={{fontSize:22}}>{f.e}</span>
+                      <div><div style={{fontWeight:700,fontSize:13,color:C.text}}>{f.t}</div><div style={{fontSize:11,color:C.muted}}>{f.s}</div></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          },
+          {
+            icon:"🗂️", title:"Browsing Recipes — The Sidebar",
+            subtitle:"Filters are always visible on the left so finding recipes is instant",
+            content:(
+              <div>
+                <div style={{display:"flex",gap:12,marginBottom:16,background:"#FDFAF5",borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`}}>
+                  <div style={{width:130,background:"#F0F7F3",borderRight:`1px solid #C5DDD3`,padding:"10px 8px",flexShrink:0}}>
+                    <div style={{fontSize:10,fontWeight:700,color:C.navy,marginBottom:6,letterSpacing:1}}>DIET</div>
+                    <div style={{background:C.accent,color:"#fff",borderRadius:5,padding:"4px 8px",fontSize:11,fontWeight:700,marginBottom:3}}>✓ All</div>
+                    <div style={{color:C.muted,padding:"4px 8px",fontSize:11,marginBottom:3}}>Keto</div>
+                    <div style={{color:C.muted,padding:"4px 8px",fontSize:11,marginBottom:10}}>Vegan</div>
+                    <div style={{fontSize:10,fontWeight:700,color:C.navy,marginBottom:6,letterSpacing:1}}>CATEGORY</div>
+                    <div style={{color:C.muted,padding:"4px 8px",fontSize:11,display:"flex",gap:4,alignItems:"center",marginBottom:3}}><span>🔥</span> Grilling</div>
+                    <div style={{color:C.muted,padding:"4px 8px",fontSize:11,display:"flex",gap:4,alignItems:"center"}}><span>🌅</span> Breakfast</div>
+                  </div>
+                  <div style={{flex:1,padding:"10px 8px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                    {[{e:"🥩",n:"Ribeye"},{e:"🍑",n:"Cobbler"},{e:"🥚",n:"Egg Cups"},{e:"🍔",n:"Smash Burger"}].map(r=>(
+                      <div key={r.n} style={{background:"#fff",borderRadius:6,padding:"6px 8px",border:`1px solid ${C.border}`,fontSize:11,fontWeight:500,color:C.text,display:"flex",gap:6,alignItems:"center"}}>
+                        <span style={{fontSize:16}}>{r.e}</span>{r.n}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {[{n:"Diet filters",d:"Keto, Vegan, Gluten-Free, Paleo and more — narrow recipes to what works for you"},{n:"Category filters",d:"Grilling, Breakfast, Dinner, Kids Drinks, Adult Drinks, Snacks, Desserts"},{n:"Collections",d:"Grandma's Kitchen, Dad's Specialties, Mom's Favorites — or create your own!"},{n:"◀ ▶ Toggle",d:"Click the arrow button in the header to hide/show the sidebar for more grid space"}].map(i=>(
+                    <div key={i.n} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:C.accent,marginTop:5,flexShrink:0}}/>
+                      <div><span style={{fontWeight:700,fontSize:13,color:C.text}}>{i.n}: </span><span style={{fontSize:13,color:C.muted}}>{i.d}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          },
+          {
+            icon:"🤖", title:"AI Recipe Search — Unlimited Recipes",
+            subtitle:"Search for anything — Chef AI generates real recipes on demand",
+            content:(
+              <div>
+                <div style={{background:"#F0F7F3",borderRadius:12,padding:"14px 16px",marginBottom:16,border:`1px solid #C5DDD3`}}>
+                  <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
+                    <div style={{flex:1,background:"#fff",borderRadius:8,padding:"8px 12px",border:`1px solid ${C.border}`,fontSize:12,color:C.muted}}>e.g. "grilled salmon" or "summer cocktails"...</div>
+                    <div style={{background:C.accent,color:"#fff",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700}}>Search</div>
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                    {["BBQ brisket","Frozen margarita","Kids lemonade","Keto dinner","Chocolate dessert"].map(s=>(
+                      <span key={s} style={{background:"#fff",border:`1px solid #C5DDD3`,borderRadius:20,padding:"3px 10px",fontSize:11,color:C.text}}>{s}</span>
+                    ))}
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {[{e:"🔍",t:"Search anything",d:"My grandmas pot roast or keto dinner under 30 min — AI understands plain English"},
+                    {e:"💾",t:"Save to your library",d:"Every AI result has a Save button — saved recipes live in your Recipes tab permanently"},
+                    {e:"📅",t:"Add straight to plan",d:"Skip saving and add AI recipes directly to your weekly meal plan in one tap"},
+                    {e:"♾️",t:"Truly unlimited",d:"No recipe database limits — anything you can describe, AI can build a full recipe for"}].map(i=>(
+                    <div key={i.t} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <span style={{fontSize:18,flexShrink:0}}>{i.e}</span>
+                      <div><span style={{fontWeight:700,fontSize:13,color:C.text}}>{i.t}: </span><span style={{fontSize:13,color:C.muted}}>{i.d}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          },
+          {
+            icon:"➕", title:"Adding Recipes — 5 Ways",
+            subtitle:"Click the green '+ Add Recipe' button on the recipes page to open the import center",
+            content:(
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                  {[{e:"🔗",t:"Import by URL",d:"Paste any recipe website link — AllRecipes, Food Network, NYT Cooking"},
+                    {e:"📋",t:"Paste Text",d:"Copy any recipe text from anywhere and AI formats it perfectly"},
+                    {e:"🎤",t:"Describe a Dish",d:"Say what you want in plain English and AI builds the full recipe"},
+                    {e:"📸",t:"Photo of Recipe",d:"Snap your cookbook, a recipe card, or Grandma's handwritten notes — AI reads it!"},
+                    {e:"📝",t:"Manual Entry",d:"Type everything yourself — full control over every ingredient and step"}].map(m=>(
+                    <div key={m.t} style={{background:"#FDFAF7",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:20,marginBottom:4}}>{m.e}</div>
+                      <div style={{fontWeight:700,fontSize:12,color:C.text,marginBottom:2}}>{m.t}</div>
+                      <div style={{fontSize:11,color:C.muted,lineHeight:1.5}}>{m.d}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",border:`1px solid #E8D9B0`,display:"flex",gap:8,alignItems:"flex-start"}}>
+                  <span style={{fontSize:18,flexShrink:0}}>💡</span>
+                  <div style={{fontSize:12,color:"#78350F",lineHeight:1.6}}>The <strong>Photo option</strong> is especially powerful — point your phone camera at any cookbook page or recipe card and the AI will read and import the entire recipe automatically.</div>
+                </div>
+              </div>
+            )
+          },
+          {
+            icon:"📚", title:"Categories & Collections",
+            subtitle:"Every recipe can belong to multiple categories AND multiple collections",
+            content:(
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                  <div style={{background:"#F0F7F3",borderRadius:12,padding:"14px",border:`1px solid #C5DDD3`}}>
+                    <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:8}}>📂 Categories</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                      {["🔥 Grilling","🌙 Dinner"].map(t=><span key={t} style={{background:"#D1FAE5",color:"#065F46",borderRadius:4,padding:"2px 7px",fontSize:10,fontWeight:700}}>{t}</span>)}
+                    </div>
+                    <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>Salmon can be both Dinner AND Grilling. Cocktails can be both Adult Drinks AND Snacks. Pick all that apply.</div>
+                  </div>
+                  <div style={{background:"#FFF8F0",borderRadius:12,padding:"14px",border:`1px solid #E8D9B0`}}>
+                    <div style={{fontWeight:700,fontSize:13,color:"#78350F",marginBottom:8}}>📚 Collections</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                      {["Grandma's","Dad's"].map(t=><span key={t} style={{background:"#FEF3C7",color:"#78350F",borderRadius:4,padding:"2px 7px",fontSize:10,fontWeight:700}}>{t}</span>)}
+                    </div>
+                    <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>Family groupings you define. Grandma's Pot Roast belongs in "Grandma's Kitchen." Create unlimited custom collections.</div>
+                  </div>
+                </div>
+                <div style={{background:"#FDFAF7",borderRadius:10,padding:"12px 14px",border:`1px solid ${C.border}`}}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:8}}>How to edit categories & collections</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {["Open any recipe card by clicking on it","Scroll down past the nutrition info","Find the category or collections section","Click the ✏️ Edit button","Toggle on/off any category or collection","Create new custom collections right from there"].map((s,i)=>(
+                      <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                        <div style={{width:20,height:20,borderRadius:"50%",background:C.accent,color:"#fff",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                        <div style={{fontSize:12,color:C.text,paddingTop:2}}>{s}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          },
+          {
+            icon:"📅", title:"Weekly Meal Planner",
+            subtitle:"Plan your entire week — breakfast, lunch, and dinner for every day",
+            content:(
+              <div>
+                <div style={{background:"#FDFAF5",borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`,marginBottom:16}}>
+                  <div style={{display:"grid",gridTemplateColumns:"60px 1fr 1fr 1fr",gap:2,padding:"8px 8px 0"}}>
+                    <div/>
+                    {["Breakfast","Lunch","Dinner"].map(s=><div key={s} style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:"center",paddingBottom:4}}>{s}</div>)}
+                  </div>
+                  {[{d:"Mon",b:"🥚 Egg Cups",l:"",dn:"🥩 Brisket"},{d:"Tue",b:"",l:"🌯 Caesar Wrap",dn:""},{d:"Wed",b:"🥞 Pancakes",l:"🥗 Salad",dn:"🍝 Pasta"}].map(row=>(
+                    <div key={row.d} style={{display:"grid",gridTemplateColumns:"60px 1fr 1fr 1fr",gap:2,padding:"0 8px 4px"}}>
+                      <div style={{fontSize:10,fontWeight:700,color:C.muted,display:"flex",alignItems:"center",paddingLeft:4}}>{row.d}</div>
+                      {[row.b,row.l,row.dn].map((cell,i)=>(
+                        <div key={i} style={{background:cell?"#EEF6F1":"#FDFAF7",border:`1px solid ${cell?C.accent:C.border}`,borderRadius:6,padding:"6px 6px",minHeight:32,display:"flex",alignItems:"center",justifyContent:cell?"flex-start":"center"}}>
+                          {cell?<span style={{fontSize:11,color:C.text}}>{cell}</span>:<span style={{color:"#A8C5B5",fontSize:16}}>+</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {[{e:"➕",t:"Add a meal",d:"Click any empty + cell, then pick a recipe from your library"},
+                    {e:"✕",t:"Remove a meal",d:"Click the small 'remove' link inside any filled cell"},
+                    {e:"📊",t:"Nutrition totals",d:"Once you have meals planned, a weekly calorie/protein/carbs/fat summary appears at the top"},
+                    {e:"🖨️",t:"Print your plan",d:"The green 'Print Plan' button opens a fridge-ready weekly calendar — great for the whole family"},
+                    {e:"💾",t:"Auto-saved",d:"Sign in and your meal plan syncs to your account — access it from any device"}].map(i=>(
+                    <div key={i.t} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <span style={{fontSize:16,flexShrink:0}}>{i.e}</span>
+                      <div><span style={{fontWeight:700,fontSize:12,color:C.text}}>{i.t}: </span><span style={{fontSize:12,color:C.muted}}>{i.d}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          },
+          {
+            icon:"🛒", title:"Grocery List — Builds Itself",
+            subtitle:"Add recipes to your meal plan and the grocery list fills in automatically",
+            content:(
+              <div>
+                <div style={{display:"flex",gap:10,marginBottom:16}}>
+                  <div style={{flex:1,background:"#FDFAF7",borderRadius:12,padding:"12px",border:`1px solid ${C.border}`}}>
+                    <div style={{fontWeight:700,fontSize:12,color:C.text,marginBottom:8}}>Your grocery list</div>
+                    {[{i:"Chicken thighs",q:"4 pieces",c:false},{i:"Fresh lemon",q:"2 whole",c:true},{i:"Garlic",q:"6 cloves",c:false},{i:"BBQ sauce",q:"1 cup",c:false},{i:"Brown sugar",q:"3 tbsp",c:true}].map((item,idx)=>(
+                      <div key={idx} style={{display:"flex",gap:8,alignItems:"center",padding:"5px 0",borderBottom:idx<4?`1px solid ${C.border}`:"none",opacity:item.c?0.4:1}}>
+                        <div style={{width:14,height:14,borderRadius:3,border:`2px solid ${item.c?C.green:"#A8C5B5"}`,background:item.c?C.green:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {item.c&&<span style={{color:"#fff",fontSize:8}}>✓</span>}
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:600,color:C.text,textDecoration:item.c?"line-through":"none"}}>{item.i}</div>
+                          <div style={{fontSize:9,color:C.muted}}>{item.q}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{width:100,display:"flex",flexDirection:"column",gap:8}}>
+                    <div style={{background:"#F0F7F3",borderRadius:8,padding:"10px 8px",border:`1px solid #C5DDD3`,textAlign:"center"}}>
+                      <div style={{fontSize:18,fontWeight:700,color:C.accent}}>5</div>
+                      <div style={{fontSize:9,color:C.muted}}>items</div>
+                    </div>
+                    <div style={{background:"#F0F7F3",borderRadius:8,padding:"10px 8px",border:`1px solid #C5DDD3`,textAlign:"center"}}>
+                      <div style={{fontSize:18,fontWeight:700,color:C.green}}>2</div>
+                      <div style={{fontSize:9,color:C.muted}}>checked</div>
+                    </div>
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {[{e:"⚡",t:"Auto-generated",d:"Every ingredient from every meal in your plan gets added automatically — nothing to type"},
+                    {e:"✓",t:"Check off as you shop",d:"Tap any item to check it off — it dims and moves to the bottom. Clear all checks when done"},
+                    {e:"📋",t:"Copy to clipboard",d:"Tap 'Copy List' and paste it into a text or Notes app to share with whoever's doing the shopping"},
+                    {e:"🖨️",t:"Print your list",d:"Opens a clean printable list with checkboxes — take it to the store or stick it on the fridge"},
+                    {e:"🔄",t:"Updates live",d:"Add or remove meals from your plan and the grocery list updates instantly"}].map(i=>(
+                    <div key={i.t} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <span style={{fontSize:16,flexShrink:0}}>{i.e}</span>
+                      <div><span style={{fontWeight:700,fontSize:12,color:C.text}}>{i.t}: </span><span style={{fontSize:12,color:C.muted}}>{i.d}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          },
+          {
+            icon:"👤", title:"Your Account & Profile",
+            subtitle:"Sign up free — your recipes, meal plans and preferences sync everywhere",
+            content:(
+              <div>
+                <div style={{background:"#F0F7F3",borderRadius:12,padding:"16px",border:`1px solid #C5DDD3`,marginBottom:16,display:"flex",gap:14,alignItems:"flex-start"}}>
+                  <div style={{width:52,height:52,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"#fff",flexShrink:0}}>S</div>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:15,color:C.text}}>Seth A.</div>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Member since Jun 2026</div>
+                    <div style={{display:"flex",gap:12}}>
+                      <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:700,color:C.accent}}>12</div><div style={{fontSize:10,color:C.muted}}>recipes added</div></div>
+                      <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:700,color:C.green}}>14</div><div style={{fontSize:10,color:C.muted}}>meals planned</div></div>
+                    </div>
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {[{e:"🔄",t:"Sync across devices",d:"Sign in on your phone, tablet, or laptop — your meal plan and saved recipes follow you everywhere"},
+                    {e:"🥗",t:"Diet preferences",d:"Set your dietary preferences (Keto, Vegan, etc.) and they'll be remembered across visits"},
+                    {e:"📖",t:"Your contributions",d:"Recipes you add show 'Added by [your name]' — your family can see who contributed what"},
+                    {e:"⭐",t:"Rate & review",d:"Rate recipes 1-5 stars and leave written reviews for the whole family to see"},
+                    {e:"🔐",t:"Free forever",d:"Creating an account is completely free — your data is stored securely in our database"}].map(i=>(
+                    <div key={i.t} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                      <span style={{fontSize:16,flexShrink:0}}>{i.e}</span>
+                      <div><span style={{fontWeight:700,fontSize:12,color:C.text}}>{i.t}: </span><span style={{fontSize:12,color:C.muted}}>{i.d}</span></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          }
+        ];
+
+        const step = steps[tourStep];
+        const total = steps.length;
+
+        return (
+          <div style={{maxWidth:680,margin:"0 auto",padding:"24px 16px"}}>
+
+            {/* Progress bar */}
+            <div style={{display:"flex",gap:4,marginBottom:24}}>
+              {steps.map((_,i)=>(
+                <div key={i} onClick={()=>setTourStep(i)} style={{flex:1,height:4,borderRadius:2,background:i<=tourStep?C.accent:C.border,cursor:"pointer",transition:"background 0.2s"}}/>
+              ))}
+            </div>
+
+            {/* Step card */}
+            <div style={{background:C.card,borderRadius:18,border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 4px 20px rgba(29,78,53,0.08)",marginBottom:20}}>
+
+              {/* Card header */}
+              <div style={{background:`linear-gradient(135deg,#14362A,#1D4E35)`,padding:"22px 24px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"}}>Step {tourStep+1} of {total}</span>
+                </div>
+                <div style={{fontSize:26,marginBottom:6}}>{step.icon}</div>
+                <div style={{fontSize:19,fontWeight:700,color:"#fff",marginBottom:4,lineHeight:1.3}}>{step.title}</div>
+                <div style={{fontSize:13,color:"rgba(255,255,255,0.75)",lineHeight:1.5}}>{step.subtitle}</div>
+              </div>
+
+              {/* Card body */}
+              <div style={{padding:"22px 24px"}}>
+                {step.content}
+              </div>
+            </div>
+
+            {/* Navigation */}
+            <div style={{display:"flex",gap:10,alignItems:"center",justifyContent:"space-between"}}>
+              <button
+                onClick={()=>setTourStep(p=>Math.max(0,p-1))}
+                disabled={tourStep===0}
+                style={{padding:"10px 20px",borderRadius:10,border:`1.5px solid ${C.border}`,background:"transparent",color:tourStep===0?C.border:C.text,cursor:tourStep===0?"not-allowed":"pointer",fontWeight:600,fontSize:14,opacity:tourStep===0?0.4:1}}
+              >
+                ← Previous
+              </button>
+
+              {/* Dot indicators */}
+              <div style={{display:"flex",gap:6}}>
+                {steps.map((_,i)=>(
+                  <div key={i} onClick={()=>setTourStep(i)} style={{width:i===tourStep?20:8,height:8,borderRadius:4,background:i===tourStep?C.accent:C.border,cursor:"pointer",transition:"all 0.2s"}}/>
+                ))}
+              </div>
+
+              {tourStep<total-1?(
+                <button
+                  onClick={()=>setTourStep(p=>Math.min(total-1,p+1))}
+                  style={{padding:"10px 20px",borderRadius:10,border:"none",background:C.accent,color:"#fff",cursor:"pointer",fontWeight:700,fontSize:14}}
+                >
+                  Next →
+                </button>
+              ):(
+                <button
+                  onClick={()=>{setScreen("home");setTourStep(0);}}
+                  style={{padding:"10px 20px",borderRadius:10,border:"none",background:C.green,color:"#fff",cursor:"pointer",fontWeight:700,fontSize:14}}
+                >
+                  Start Cooking! 🍽️
+                </button>
+              )}
+            </div>
+
+            {/* Jump to section */}
+            <div style={{marginTop:24,padding:"16px 20px",background:"#F0F7F3",borderRadius:12,border:`1px solid #C5DDD3`}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.navy,letterSpacing:1.2,textTransform:"uppercase",marginBottom:10}}>Jump to any section</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {steps.map((s,i)=>(
+                  <button key={i} onClick={()=>setTourStep(i)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${i===tourStep?C.accent:C.border}`,background:i===tourStep?`${C.accent}18`:"transparent",color:i===tourStep?C.accent:C.muted,fontSize:12,cursor:"pointer",fontWeight:i===tourStep?700:400}}>
+                    {s.icon} {s.title.split("—")[0].trim()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        );
+      })()}
 
       {/* ── RECIPE DETAIL MODAL ── */}
       {selectedRecipe&&(
