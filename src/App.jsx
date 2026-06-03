@@ -539,7 +539,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
         </div>
         <div style={{display:"flex",gap:4,marginTop:12,overflowX:"auto",scrollbarWidth:"none"}}>
           {[["home","🍽️ Recipes"],["search","🤖 AI Search"],["planner","📅 Plan"],["grocery","🛒 Groceries"],["profile","👤 Profile"]].map(([id,label])=>(
-            <button key={id} style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s",background:screen===id?C.accent:"transparent",color:screen===id?"#fff":C.text,whiteSpace:"nowrap"}} onClick={()=>setScreen(id)}>
+            <button key={id} style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s",background:screen===id?"rgba(255,255,255,0.2)":"transparent",color:"#FFFFFF",opacity:screen===id?1:0.72,whiteSpace:"nowrap",border:screen===id?"1px solid rgba(255,255,255,0.25)":"1px solid transparent"}} onClick={()=>setScreen(id)}>
               {label}{id==="planner"&&plannedCount>0?<span style={{marginLeft:5,background:"rgba(255,255,255,0.3)",borderRadius:10,padding:"1px 6px",fontSize:10,color:"#fff"}}>{plannedCount}</span>:null}
             </button>
           ))}
