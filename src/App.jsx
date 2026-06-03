@@ -66,6 +66,11 @@ export default function App() {
   const [selectedRecipe,  setSelectedRecipe]  = useState(null);
   const [recipeReviews,   setRecipeReviews]   = useState([]);
   const [editingCategories, setEditingCategories] = useState(false);
+  const [allCollections,    setAllCollections]    = useState([]);
+  const [editingCollections,setEditingCollections]= useState(false);
+  const [tempCollections,   setTempCollections]   = useState([]);
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [addingCollection,  setAddingCollection]  = useState(false);
   const [tempCategories,    setTempCategories]    = useState([]);
   const [userRating,      setUserRating]      = useState(0);
   const [reviewText,      setReviewText]      = useState("");
@@ -132,7 +137,12 @@ export default function App() {
   const logout = async () => { await supabase.auth.signOut(); setProfile(null); setMealPlan({}); showToast("Logged out.","info"); };
 
   // ── LOAD RECIPES ──────────────────────────────────────────────────────────
-  useEffect(() => { loadRecipes(); }, []);
+  useEffect(() => { loadRecipes(); loadCollections(); }, []);
+
+  const loadCollections = async () => {
+    const {data} = await supabase.from("collections").select("*").order("name");
+    if(data) setAllCollections(data.map(c=>c.name));
+  };
 
   const loadRecipes = async () => {
     setLoading(true);
@@ -209,6 +219,9 @@ export default function App() {
     setUserRating(0); setReviewText(""); setRecipeReviews([]);
     setEditingCategories(false);
     setTempCategories(Array.isArray(r.categories)?r.categories:(r.category?[r.category]:[]));
+    setEditingCollections(false);
+    setTempCollections(Array.isArray(r.collections)?r.collections:(r.collection&&r.collection!=="None"?[r.collection]:[]));
+    setNewCollectionName(""); setAddingCollection(false);
     const {data} = await supabase.from("reviews").select("*").eq("recipe_id",r.id).order("created_at",{ascending:false});
     if(data) setRecipeReviews(data);
     if(session) {
@@ -252,6 +265,40 @@ export default function App() {
       showToast("Error saving: "+error.message, "error");
     }
     setEditingCategories(false);
+  };
+
+  const createCollection = async () => {
+    const name = newCollectionName.trim();
+    if(!name) return;
+    if(allCollections.includes(name)) {
+      if(!tempCollections.includes(name)) setTempCollections(p=>[...p,name]);
+      setNewCollectionName(""); setAddingCollection(false); return;
+    }
+    const {error} = await supabase.from("collections").insert({
+      name, created_by: session?.user?.id||null
+    });
+    if(!error) {
+      setAllCollections(prev=>[...prev,name].sort());
+      setTempCollections(prev=>[...prev,name]);
+      showToast(`"${name}" collection created! 📚`);
+    } else {
+      showToast("Error: "+error.message,"error");
+    }
+    setNewCollectionName(""); setAddingCollection(false);
+  };
+
+  const saveCollections = async () => {
+    const {error} = await supabase.from("recipes")
+      .update({ collections: tempCollections, collection: tempCollections[0]||"None" })
+      .eq("id", selectedRecipe.id);
+    if(!error) {
+      setRecipes(prev=>prev.map(r=>r.id===selectedRecipe.id?{...r,collections:tempCollections,collection:tempCollections[0]||"None"}:r));
+      setSelectedRecipe(prev=>({...prev,collections:tempCollections,collection:tempCollections[0]||"None"}));
+      showToast("Collections saved! 📚");
+    } else {
+      showToast("Error: "+error.message,"error");
+    }
+    setEditingCollections(false);
   };
 
   const deleteReview = async (reviewId) => {
@@ -390,7 +437,8 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
   const filtered = useMemo(()=>recipes.filter(r=>{
     const dietMatch=activeDiet==="All"||(r.tags||[]).includes(activeDiet);
     const catMatch=activeCategory==="All"||(Array.isArray(r.categories)?r.categories.includes(activeCategory):(r.category===activeCategory));
-    const colMatch=activeCollection==="All"||(r.collection||"None")===activeCollection;
+    const colMatch=activeCollection==="All"||
+      (Array.isArray(r.collections)?r.collections.includes(activeCollection):(r.collection===activeCollection));
     const srchMatch=(r.name||"").toLowerCase().includes(search.toLowerCase())||(r.description||"").toLowerCase().includes(search.toLowerCase());
     return dietMatch&&catMatch&&colMatch&&srchMatch;
   }),[recipes,activeDiet,activeCategory,activeCollection,search]);
@@ -442,7 +490,12 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
             {(Array.isArray(r.categories)?r.categories:[r.category]).filter(Boolean).map(cat=>(
               <span key={cat} style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#DBEAFE",color:"#1D4ED8"}}>{cat}</span>
             ))}
-            {r.collection&&r.collection!=="None"&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF3CD",color:"#7A5800"}}>📚 {r.collection}</span>}
+            {(Array.isArray(r.collections)&&r.collections.length>0
+              ? r.collections
+              : (r.collection&&r.collection!=="None"?[r.collection]:[])
+            ).map(col=>(
+              <span key={col} style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF3CD",color:"#7A5800"}}>📚 {col}</span>
+            ))}
           </div>
           {showSave&&(
             <div style={{display:"flex",gap:6,marginTop:6}} onClick={e=>e.stopPropagation()}>
@@ -512,8 +565,8 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
               {CATEGORIES.map(c=><button key={c} style={pill(activeCategory===c,C.accent2)} onClick={()=>setActiveCategory(c)}>{CAT_EMOJI[c]} {c}</button>)}
             </div>
             <div style={{display:"flex",gap:6,overflowX:"auto",scrollbarWidth:"none",marginTop:8,paddingBottom:4}}>
-              <button key="all-col" style={pill(activeCollection==="All",C.gold)} onClick={()=>setActiveCollection("All")}>📚 All Collections</button>
-              {FAMILY_COLLECTIONS.filter(c=>c!=="None").map(c=><button key={c} style={pill(activeCollection===c,C.gold)} onClick={()=>setActiveCollection(c)}>{c}</button>)}
+              <button key="all-col" style={pill(activeCollection==="All",C.gold)} onClick={()=>setActiveCollection("All")}>📚 All</button>
+              {allCollections.map(c=><button key={c} style={pill(activeCollection===c,C.gold)} onClick={()=>setActiveCollection(c)}>{c}</button>)}
             </div>
             <div style={{fontSize:12,color:C.muted,marginTop:8,fontWeight:600}}>{loading?"Loading recipes...":filtered.length+" recipe"+(filtered.length!==1?"s":"")+" found"}</div>
           </div>
@@ -752,6 +805,73 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
             {/* Nutrition */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:16}}>
               {(()=>{const n=scaledNutrition(selectedRecipe,currentServings);return[{l:"Calories",v:n.calories,c:C.accent},{l:"Protein",v:n.protein+"g",c:C.green},{l:"Carbs",v:n.carbs+"g",c:C.peach},{l:"Fat",v:n.fat+"g",c:C.red}].map(m=>(<div key={m.l} style={{...statCard,padding:"10px 8px"}}><div style={{fontSize:15,fontWeight:900,color:m.c}}>{m.v}</div><div style={{fontSize:10,color:C.muted}}>{m.l}</div></div>))})()}
+            </div>
+
+            {/* ── COLLECTIONS SECTION ── */}
+            <div style={{background:"#FFF8F0",borderRadius:12,padding:"12px 16px",marginBottom:14,border:`1.5px solid ${C.border}`}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                <div style={{fontWeight:700,fontSize:13,color:C.text}}>📚 Collections</div>
+                {session&&!editingCollections&&(
+                  <button onClick={()=>setEditingCollections(true)} style={{padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF2E6",color:C.accent,border:`1px solid ${C.border}`,cursor:"pointer"}}>✏️ Edit</button>
+                )}
+              </div>
+
+              {!editingCollections&&(
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(Array.isArray(selectedRecipe.collections)&&selectedRecipe.collections.length>0
+                    ? selectedRecipe.collections
+                    : (selectedRecipe.collection&&selectedRecipe.collection!=="None"?[selectedRecipe.collection]:[])
+                  ).map(col=>(
+                    <span key={col} style={{padding:"4px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:"#FFF3CD",color:"#7A5800",border:"1px solid #F0D9C8"}}>{col}</span>
+                  ))}
+                  {!(Array.isArray(selectedRecipe.collections)&&selectedRecipe.collections.length>0)&&!(selectedRecipe.collection&&selectedRecipe.collection!=="None")&&(
+                    <span style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>No collections yet — {session?"click Edit to add":"sign in to add"}</span>
+                  )}
+                </div>
+              )}
+
+              {editingCollections&&(
+                <div>
+                  <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Select existing or create your own:</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                    {allCollections.map(col=>{
+                      const on=tempCollections.includes(col);
+                      return (
+                        <button key={col} type="button"
+                          style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${on?"#D97706":C.border}`,background:on?"#FFF3CD":"#fff",color:on?"#7A5800":C.muted,fontSize:12,cursor:"pointer",fontWeight:600,transition:"all 0.15s"}}
+                          onClick={()=>setTempCollections(p=>on?p.filter(x=>x!==col):[...p,col])}>
+                          {on?"✓ ":""}{col}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Create new collection */}
+                  {!addingCollection?(
+                    <button style={{padding:"5px 14px",borderRadius:20,border:`1.5px dashed ${C.accent}`,background:"transparent",color:C.accent,fontSize:12,cursor:"pointer",fontWeight:700,marginBottom:10}} onClick={()=>setAddingCollection(true)}>
+                      + Create New Collection
+                    </button>
+                  ):(
+                    <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
+                      <input
+                        style={{...{width:"100%",padding:"8px 12px",background:"#FFFAF5",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"},flex:1,marginBottom:0}}
+                        placeholder="e.g. Summer BBQ Favorites"
+                        value={newCollectionName}
+                        onChange={e=>setNewCollectionName(e.target.value)}
+                        onKeyDown={e=>e.key==="Enter"&&createCollection()}
+                        autoFocus
+                      />
+                      <button style={{padding:"8px 14px",borderRadius:10,background:C.accent,border:"none",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}} onClick={createCollection}>Add ✓</button>
+                      <button style={{padding:"8px 10px",borderRadius:10,background:"transparent",border:`1px solid ${C.border}`,color:C.muted,fontSize:12,cursor:"pointer"}} onClick={()=>{setAddingCollection(false);setNewCollectionName("");}}>✕</button>
+                    </div>
+                  )}
+
+                  <div style={{display:"flex",gap:8}}>
+                    <button style={{background:"transparent",border:`1.5px solid ${C.border}`,color:C.text,borderRadius:10,padding:"7px 14px",cursor:"pointer",fontWeight:600,fontSize:13}} onClick={()=>setEditingCollections(false)}>Cancel</button>
+                    <button style={{background:`linear-gradient(135deg,#D97706,#F59E0B)`,border:"none",color:"#fff",borderRadius:10,padding:"7px 16px",cursor:"pointer",fontWeight:700,fontSize:13}} onClick={saveCollections}>Save Collections ✓</button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{fontWeight:800,fontSize:15,marginBottom:8,color:C.text}}>Ingredients</div>
