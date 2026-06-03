@@ -80,6 +80,7 @@ export default function App() {
   const [toast,           setToast]           = useState(null);
 
   const [activeCollection,setActiveCollection]= useState("All");
+  const [sidebarOpen,     setSidebarOpen]     = useState(true);
   const [aiQuery,         setAiQuery]         = useState("");
   const [aiLoading,       setAiLoading]       = useState(false);
   const [aiResults,       setAiResults]       = useState([]);
@@ -547,39 +548,111 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
 
       {/* ── RECIPES ── */}
       {screen==="home"&&(
-        <div>
-          <div style={{background:`linear-gradient(135deg,#14362A,#1D4E35,#2A6347)`,padding:"24px 20px 20px",textAlign:"center"}}>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.85)",fontWeight:600,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Welcome to</div>
-            <div style={{fontSize:22,fontWeight:900,color:"#fff",marginBottom:4,letterSpacing:"-0.5px"}}>Anderson Heirloom Recipes</div>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>Family recipes, passed down with love 🏡</div>
-          </div>
-          <div style={{padding:"14px 16px 0"}}>
-            <div style={{display:"flex",gap:8,marginBottom:10}}>
-              <input style={{...inputStyle,flex:1,marginBottom:0}} placeholder="🔍  Search recipes..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        <div style={{display:"flex",minHeight:"calc(100vh - 90px)"}}>
+
+          {/* ── SIDEBAR ── */}
+          {sidebarOpen&&(<div style={{width:220,flexShrink:0,background:"#F0F7F3",borderRight:`1px solid #C5DDD3`,position:"sticky",top:90,height:"calc(100vh - 90px)",overflowY:"auto",display:"flex",flexDirection:"column"}}>
+
+            {/* Sidebar header */}
+            <div style={{background:C.navy,padding:"16px 14px 12px"}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:600,letterSpacing:1.5,textTransform:"uppercase",marginBottom:2}}>Anderson Heirloom</div>
+              <div style={{fontSize:13,color:"#E8F5EE",fontWeight:700}}>Family Recipes</div>
+            </div>
+
+            <div style={{padding:"14px 12px",flex:1}}>
+
+              {/* Search */}
+              <input
+                style={{width:"100%",padding:"8px 10px",background:"#fff",border:`1.5px solid #C5DDD3`,borderRadius:8,color:C.text,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:14}}
+                placeholder="Search recipes..."
+                value={search}
+                onChange={e=>setSearch(e.target.value)}
+              />
+
+              {/* Diet */}
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,fontWeight:700,color:C.navy,letterSpacing:1.2,textTransform:"uppercase",marginBottom:8}}>Diet</div>
+                <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  {DIETS.map(d=>(
+                    <button key={d} onClick={()=>setActiveDiet(d)} style={{textAlign:"left",padding:"6px 10px",borderRadius:6,border:"none",background:activeDiet===d?C.accent:"transparent",color:activeDiet===d?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:activeDiet===d?700:400,transition:"all 0.15s"}}>
+                      {activeDiet===d?"✓ ":""}{d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category */}
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,fontWeight:700,color:C.navy,letterSpacing:1.2,textTransform:"uppercase",marginBottom:8}}>Category</div>
+                <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  {CATEGORIES.map(c=>(
+                    <button key={c} onClick={()=>setActiveCategory(c)} style={{textAlign:"left",padding:"6px 10px",borderRadius:6,border:"none",background:activeCategory===c?`${C.accent2}18`:"transparent",color:activeCategory===c?C.accent2:C.text,fontSize:12,cursor:"pointer",fontWeight:activeCategory===c?700:400,transition:"all 0.15s",display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:14}}>{CAT_EMOJI[c]}</span>
+                      <span>{c}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Collections */}
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,fontWeight:700,color:C.navy,letterSpacing:1.2,textTransform:"uppercase",marginBottom:8}}>Collections</div>
+                <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  <button onClick={()=>setActiveCollection("All")} style={{textAlign:"left",padding:"6px 10px",borderRadius:6,border:"none",background:activeCollection==="All"?`${C.gold}22`:"transparent",color:activeCollection==="All"?C.gold:C.text,fontSize:12,cursor:"pointer",fontWeight:activeCollection==="All"?700:400,transition:"all 0.15s"}}>
+                    {activeCollection==="All"?"✓ ":""}📚 All Collections
+                  </button>
+                  {allCollections.map(c=>(
+                    <button key={c} onClick={()=>setActiveCollection(c)} style={{textAlign:"left",padding:"6px 10px",borderRadius:6,border:"none",background:activeCollection===c?`${C.gold}22`:"transparent",color:activeCollection===c?C.gold:C.muted,fontSize:12,cursor:"pointer",fontWeight:activeCollection===c?700:400,transition:"all 0.15s",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                      {activeCollection===c?"✓ ":""}{c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Clear filters */}
+              {(activeDiet!=="All"||activeCategory!=="All"||activeCollection!=="All"||search)&&(
+                <button onClick={()=>{setActiveDiet("All");setActiveCategory("All");setActiveCollection("All");setSearch("");}} style={{width:"100%",padding:"7px 0",borderRadius:8,border:`1px dashed #C5DDD3`,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontWeight:500,marginTop:4}}>
+                  ✕ Clear all filters
+                </button>
+              )}
+            </div>
+          </div>)}
+
+          {/* ── MAIN CONTENT ── */}
+          <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
+
+            {/* Content header bar */}
+            <div style={{padding:"14px 18px 10px",borderBottom:`1px solid ${C.border}`,background:C.card,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <button onClick={()=>setSidebarOpen(p=>!p)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"5px 8px",cursor:"pointer",color:C.muted,fontSize:14,display:"flex",alignItems:"center"}} title={sidebarOpen?"Hide sidebar":"Show sidebar"}>
+                  {sidebarOpen?"◀":"▶"}
+                </button>
+                <div>
+                  <div style={{fontWeight:700,fontSize:16,color:C.text}}>
+                    {activeCategory!=="All"?`${CAT_EMOJI[activeCategory]} ${activeCategory}`:activeCollection!=="All"?`📚 ${activeCollection}`:activeDiet!=="All"?`${activeDiet} Recipes`:"All Recipes"}
+                  </div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:1}}>{loading?"Loading...":filtered.length+" recipe"+(filtered.length!==1?"s":"")+(search?` matching "${search}`:"")}</div>
+                </div>
+              </div>
               <button style={btnStyle()} onClick={()=>setImportOpen(true)}>＋ Add Recipe</button>
             </div>
-            <div style={{display:"flex",gap:6,overflowX:"auto",scrollbarWidth:"none",paddingBottom:4}}>
-              {DIETS.map(d=><button key={d} style={pill(activeDiet===d)} onClick={()=>setActiveDiet(d)}>{d}</button>)}
-            </div>
-            <div style={{display:"flex",gap:6,overflowX:"auto",scrollbarWidth:"none",marginTop:8,paddingBottom:4}}>
-              {CATEGORIES.map(c=><button key={c} style={pill(activeCategory===c,C.accent2)} onClick={()=>setActiveCategory(c)}>{CAT_EMOJI[c]} {c}</button>)}
-            </div>
-            <div style={{display:"flex",gap:6,overflowX:"auto",scrollbarWidth:"none",marginTop:8,paddingBottom:4}}>
-              <button key="all-col" style={pill(activeCollection==="All",C.gold)} onClick={()=>setActiveCollection("All")}>📚 All</button>
-              {allCollections.map(c=><button key={c} style={pill(activeCollection===c,C.gold)} onClick={()=>setActiveCollection(c)}>{c}</button>)}
-            </div>
-            <div style={{fontSize:12,color:C.muted,marginTop:8,fontWeight:600}}>{loading?"Loading recipes...":filtered.length+" recipe"+(filtered.length!==1?"s":"")+" found"}</div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))",gap:14,padding:"16px"}}>
-            {filtered.map(r=><RecipeCard key={r.id} r={r}/>)}
-            {!loading&&filtered.length===0&&(
-              <div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px 0",color:C.muted}}>
-                <div style={{fontSize:48}}>🍽️</div>
-                <div style={{fontWeight:800,marginTop:8,color:C.text,fontSize:16}}>No recipes found</div>
-                <div style={{fontSize:13,marginTop:4}}>Try adjusting filters or use AI Search</div>
+
+            {/* Recipe grid */}
+            <div style={{padding:"16px",flex:1,background:C.bg}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
+                {filtered.map(r=><RecipeCard key={r.id} r={r}/>)}
+                {!loading&&filtered.length===0&&(
+                  <div style={{gridColumn:"1/-1",textAlign:"center",padding:"80px 0",color:C.muted}}>
+                    <div style={{fontSize:52}}>🍽️</div>
+                    <div style={{fontWeight:700,marginTop:10,color:C.text,fontSize:17}}>No recipes found</div>
+                    <div style={{fontSize:13,marginTop:6,color:C.muted}}>Try adjusting your filters or add a new recipe</div>
+                    <button style={{...btnStyle(),marginTop:16}} onClick={()=>setImportOpen(true)}>＋ Add Recipe</button>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
+
         </div>
       )}
 
