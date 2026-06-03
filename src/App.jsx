@@ -65,6 +65,8 @@ export default function App() {
   const [search,          setSearch]          = useState("");
   const [selectedRecipe,  setSelectedRecipe]  = useState(null);
   const [recipeReviews,   setRecipeReviews]   = useState([]);
+  const [editingCategories, setEditingCategories] = useState(false);
+  const [tempCategories,    setTempCategories]    = useState([]);
   const [userRating,      setUserRating]      = useState(0);
   const [reviewText,      setReviewText]      = useState("");
   const [reviewLoading,   setReviewLoading]   = useState(false);
@@ -88,7 +90,7 @@ export default function App() {
   const [importLoading,   setImportLoading]   = useState(false);
   const [importResult,    setImportResult]    = useState(null);
   const [importError,     setImportError]     = useState("");
-  const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",category:"Dinner",collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
+  const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",categories:[],collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
 
   const [authMode,  setAuthMode]  = useState("login");
   const [authForm,  setAuthForm]  = useState({name:"",email:"",password:""});
@@ -181,7 +183,7 @@ export default function App() {
   // ── MEAL PLAN ACTIONS ─────────────────────────────────────────────────────
   const addToMealPlan = async (day, slot, recipe) => {
     const key = `${day}-${slot}`;
-    const snapshot = { id:recipe.id, name:recipe.name, emoji:recipe.emoji, calories:recipe.calories, protein:recipe.protein, carbs:recipe.carbs, fat:recipe.fat, category:recipe.category, ingredients:recipe.ingredients, steps:recipe.steps, base_servings:recipe.base_servings, description:recipe.description, tags:recipe.tags };
+    const snapshot = { id:recipe.id, name:recipe.name, emoji:recipe.emoji, calories:recipe.calories, protein:recipe.protein, carbs:recipe.carbs, fat:recipe.fat, category:recipe.category, categories:recipe.categories||(recipe.category?[recipe.category]:[]), ingredients:recipe.ingredients, steps:recipe.steps, base_servings:recipe.base_servings, description:recipe.description, tags:recipe.tags };
     setMealPlan(prev => ({...prev,[key]:snapshot}));
     if(session) {
       await supabase.from("meal_plans").upsert({ user_id:session.user.id, day, slot, recipe_id:recipe.id, recipe_snapshot:snapshot }, {onConflict:"user_id,day,slot"});
@@ -205,6 +207,8 @@ export default function App() {
   const openRecipe = async (r) => {
     setSelectedRecipe(r); setRecipeServings(r.base_servings||r.baseServings||4);
     setUserRating(0); setReviewText(""); setRecipeReviews([]);
+    setEditingCategories(false);
+    setTempCategories(Array.isArray(r.categories)?r.categories:(r.category?[r.category]:[]));
     const {data} = await supabase.from("reviews").select("*").eq("recipe_id",r.id).order("created_at",{ascending:false});
     if(data) setRecipeReviews(data);
     if(session) {
@@ -228,6 +232,26 @@ export default function App() {
     const {data,error} = await supabase.from("reviews").insert({ recipe_id:selectedRecipe.id, user_id:session.user.id, user_name:profile?.name||"User", body:reviewText.trim() }).select().single();
     if(!error && data) { setRecipeReviews(prev=>[data,...prev]); setReviewText(""); showToast("Review posted! 💬"); }
     setReviewLoading(false);
+  };
+
+  const saveCategories = async () => {
+    if(!tempCategories.length) return;
+    const primaryCat = tempCategories[0];
+    const emojis={"Breakfast":"🌅","Lunch":"☀️","Dinner":"🍽️","Grilling":"🔥","Kids Drinks":"🧃","Adult Drinks":"🍹","Snacks":"🍿","Desserts":"🍰"};
+    const newEmoji = emojis[primaryCat]||selectedRecipe.emoji||"🍽️";
+    const {error} = await supabase.from("recipes").update({
+      categories: tempCategories,
+      category: primaryCat,
+      emoji: newEmoji
+    }).eq("id", selectedRecipe.id);
+    if(!error) {
+      setRecipes(prev => prev.map(r => r.id===selectedRecipe.id ? {...r, categories:tempCategories, category:primaryCat, emoji:newEmoji} : r));
+      setSelectedRecipe(prev => ({...prev, categories:tempCategories, category:primaryCat, emoji:newEmoji}));
+      showToast("Categories updated! ✅");
+    } else {
+      showToast("Error saving: "+error.message, "error");
+    }
+    setEditingCategories(false);
   };
 
   const deleteReview = async (reviewId) => {
@@ -301,7 +325,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
 
   // ── IMPORTS ───────────────────────────────────────────────────────────────
   const confirmImport = () => { if(!importResult) return; saveRecipeToDB(importResult); resetImport(); };
-  const resetImport = () => { setImportOpen(false);setImportMode("menu");setImportUrl("");setImportText("");setImportDescribe("");setImportPhoto(null);setImportResult(null);setImportError(""); setManualRecipe({name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",category:"Dinner",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""]}); };
+  const resetImport = () => { setImportOpen(false);setImportMode("menu");setImportUrl("");setImportText("");setImportDescribe("");setImportPhoto(null);setImportResult(null);setImportError(""); setManualRecipe({name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",categories:[],collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""]}); };
 
   const importByUrl = async () => {
     if(!importUrl.trim()) return; setImportLoading(true);setImportError("");setImportResult(null);
@@ -330,10 +354,12 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
   const confirmManual = () => {
     const r=manualRecipe;
     if(!r.name.trim()) return setImportError("Please enter a recipe name.");
+    if(!(r.categories||[]).length) return setImportError("Please select at least one category.");
     if(!r.ingredients.filter(i=>i.item.trim()).length) return setImportError("Add at least one ingredient.");
     if(!r.steps.filter(s=>s.trim()).length) return setImportError("Add at least one step.");
     const emojis={"Breakfast":"🌅","Lunch":"☀️","Dinner":"🍽️","Grilling":"🔥","Kids Drinks":"🧃","Adult Drinks":"🍹","Snacks":"🍿","Desserts":"🍰"};
-    saveRecipeToDB({...r,emoji:emojis[r.category]||"🍽️",desc:r.desc,collection:r.collection||"None",ingredients:r.ingredients.filter(i=>i.item.trim()).map(i=>({...i,qty:isNaN(Number(i.qty))?i.qty:Number(i.qty)})),steps:r.steps.filter(s=>s.trim())});
+    const primaryCat=(r.categories||[])[0]||"Dinner";
+    saveRecipeToDB({...r,category:primaryCat,categories:r.categories,emoji:emojis[primaryCat]||"🍽️",desc:r.desc,collection:r.collection||"None",ingredients:r.ingredients.filter(i=>i.item.trim()).map(i=>({...i,qty:isNaN(Number(i.qty))?i.qty:Number(i.qty)})),steps:r.steps.filter(s=>s.trim())});
     resetImport();
   };
 
@@ -363,7 +389,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
   // ── FILTERED RECIPES ──────────────────────────────────────────────────────
   const filtered = useMemo(()=>recipes.filter(r=>{
     const dietMatch=activeDiet==="All"||(r.tags||[]).includes(activeDiet);
-    const catMatch=activeCategory==="All"||r.category===activeCategory;
+    const catMatch=activeCategory==="All"||(Array.isArray(r.categories)?r.categories.includes(activeCategory):(r.category===activeCategory));
     const colMatch=activeCollection==="All"||(r.collection||"None")===activeCollection;
     const srchMatch=(r.name||"").toLowerCase().includes(search.toLowerCase())||(r.description||"").toLowerCase().includes(search.toLowerCase());
     return dietMatch&&catMatch&&colMatch&&srchMatch;
@@ -413,6 +439,9 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:showSave?10:0}}>
             {(r.tags||[]).map(t=><span key={t} style={tagStyle(t)}>{t}</span>)}
             <span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#DBEAFE",color:"#1D4ED8"}}>{r.category}</span>
+            {(Array.isArray(r.categories)?r.categories:[r.category]).filter(Boolean).map(cat=>(
+              <span key={cat} style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#DBEAFE",color:"#1D4ED8"}}>{cat}</span>
+            ))}
             {r.collection&&r.collection!=="None"&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF3CD",color:"#7A5800"}}>📚 {r.collection}</span>}
           </div>
           {showSave&&(
@@ -676,8 +705,35 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
 
             <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:12,color:C.muted,marginBottom:10,alignItems:"center"}}>
               <span>⏱ {selectedRecipe.time}</span><span>🔥 {scaledNutrition(selectedRecipe,currentServings).calories} cal</span>
-              <span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#DBEAFE",color:"#1D4ED8"}}>{selectedRecipe.category}</span>
-              {selectedRecipe.collection&&selectedRecipe.collection!=="None"&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF3CD",color:"#7A5800"}}>📚 {selectedRecipe.collection}</span>}
+              {!editingCategories && (Array.isArray(selectedRecipe.categories)?selectedRecipe.categories:[selectedRecipe.category]).filter(Boolean).map(cat=>(
+                <span key={cat} style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#DBEAFE",color:"#1D4ED8"}}>{cat}</span>
+              ))}
+              {!editingCategories && selectedRecipe.collection&&selectedRecipe.collection!=="None"&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF3CD",color:"#7A5800"}}>📚 {selectedRecipe.collection}</span>}
+              {session && !editingCategories && (
+                <button onClick={()=>{setEditingCategories(true);setTempCategories(Array.isArray(selectedRecipe.categories)?[...selectedRecipe.categories]:(selectedRecipe.category?[selectedRecipe.category]:[]));}} style={{padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:700,background:"#FFF2E6",color:C.accent,border:`1px solid ${C.border}`,cursor:"pointer"}}>✏️ Edit</button>
+              )}
+              {editingCategories && (
+                <div style={{width:"100%",marginTop:8,background:"#FFF8F0",borderRadius:12,padding:"14px 16px",border:`1.5px solid ${C.border}`}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:8}}>Select all categories that apply:</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+                    {["Breakfast","Lunch","Dinner","Grilling","Kids Drinks","Adult Drinks","Snacks","Desserts"].map(cat=>{
+                      const on=tempCategories.includes(cat);
+                      return (
+                        <button key={cat} type="button"
+                          style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${on?C.accent:C.border}`,background:on?`${C.accent}22`:"#fff",color:on?C.accent:C.muted,fontSize:12,cursor:"pointer",fontWeight:700,transition:"all 0.15s"}}
+                          onClick={()=>setTempCategories(p=>on?p.filter(x=>x!==cat):[...p,cat])}>
+                          {on?"✓ ":""}{CAT_EMOJI[cat]} {cat}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!tempCategories.length && <div style={{fontSize:12,color:C.red,marginBottom:8}}>Please select at least one category.</div>}
+                  <div style={{display:"flex",gap:8}}>
+                    <button style={{...ghostBtn,fontSize:12,padding:"7px 14px"}} onClick={()=>setEditingCategories(false)}>Cancel</button>
+                    <button style={{...btnStyle(C.green),fontSize:12,padding:"7px 16px",opacity:!tempCategories.length?0.5:1}} disabled={!tempCategories.length} onClick={saveCategories}>Save Categories ✓</button>
+                  </div>
+                </div>
+              )}
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:16}}>
               {(selectedRecipe.tags||[]).map(t=><span key={t} style={tagStyle(t)}>{t}</span>)}
@@ -802,7 +858,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                   <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Protein (g)</div><input style={{...inputStyle,marginBottom:0}} type="number" placeholder="25" value={manualRecipe.protein} onChange={e=>setManualRecipe(p=>({...p,protein:e.target.value}))}/></div>
                   <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Carbs (g)</div><input style={{...inputStyle,marginBottom:0}} type="number" placeholder="30" value={manualRecipe.carbs} onChange={e=>setManualRecipe(p=>({...p,carbs:e.target.value}))}/></div>
                   <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Fat (g)</div><input style={{...inputStyle,marginBottom:0}} type="number" placeholder="12" value={manualRecipe.fat} onChange={e=>setManualRecipe(p=>({...p,fat:e.target.value}))}/></div>
-                  <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Category</div><select style={{...inputStyle,marginBottom:0}} value={manualRecipe.category} onChange={e=>setManualRecipe(p=>({...p,category:e.target.value}))}>{["Breakfast","Lunch","Dinner","Grilling","Kids Drinks","Adult Drinks","Snacks","Desserts"].map(c=><option key={c}>{c}</option>)}</select></div>
+                  <div style={{gridColumn:"1/-1"}}><div style={{fontSize:12,color:C.muted,marginBottom:6,fontWeight:600}}>Categories * (select all that apply)</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{["Breakfast","Lunch","Dinner","Grilling","Kids Drinks","Adult Drinks","Snacks","Desserts"].map(cat=>{const on=(manualRecipe.categories||[]).includes(cat);return(<button key={cat} type="button" style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${on?C.accent:C.border}`,background:on?`${C.accent}22`:"transparent",color:on?C.accent:C.muted,fontSize:12,cursor:"pointer",fontWeight:600}} onClick={()=>setManualRecipe(p=>({...p,categories:on?(p.categories||[]).filter(x=>x!==cat):[...(p.categories||[]),cat]}))}>{ on?"✓ ":""}{CAT_EMOJI[cat]} {cat}</button>);})}</div></div>
                   <div><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Family Collection</div><select style={{...inputStyle,marginBottom:0}} value={manualRecipe.collection} onChange={e=>setManualRecipe(p=>({...p,collection:e.target.value}))}>{FAMILY_COLLECTIONS.map(c=><option key={c}>{c}</option>)}</select></div>
                   <div style={{gridColumn:"1/-1"}}><div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Description</div><input style={{...inputStyle,marginBottom:0}} placeholder="Short description" value={manualRecipe.desc} onChange={e=>setManualRecipe(p=>({...p,desc:e.target.value}))}/></div>
                 </div>
