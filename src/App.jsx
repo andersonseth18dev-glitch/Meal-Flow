@@ -1,17 +1,37 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase";
 import { SEED_RECIPES } from "./seedRecipes";
 
-// ─── PHOTO CACHE ──────────────────────────────────────────────────────────────
+// ─── PHOTO CACHE + THROTTLED QUEUE ─────────────────────────────────────────────
+// Unsplash's free tier allows only 50 requests/hour. With 300+ recipes we must
+// throttle concurrent requests and only fetch photos for cards actually on screen.
 const photoCache = {};
-const fetchPhoto = async (recipeName) => {
-  if (photoCache[recipeName]) return photoCache[recipeName];
-  try {
-    const res = await fetch("/.netlify/functions/unsplash", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ query: recipeName }) });
-    const data = await res.json();
-    if (data.url) { photoCache[recipeName] = data; return data; }
-  } catch {}
-  return null;
+let activeFetches = 0;
+const MAX_CONCURRENT_PHOTO_FETCHES = 3;
+const photoQueue = [];
+
+const processPhotoQueue = () => {
+  if (activeFetches >= MAX_CONCURRENT_PHOTO_FETCHES || photoQueue.length === 0) return;
+  const { recipeName, resolve } = photoQueue.shift();
+  activeFetches++;
+  (async () => {
+    try {
+      const res = await fetch("/.netlify/functions/unsplash", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ query: recipeName }) });
+      const data = await res.json();
+      if (data.url) { photoCache[recipeName] = data; resolve(data); }
+      else resolve(null);
+    } catch { resolve(null); }
+    activeFetches--;
+    processPhotoQueue();
+  })();
+};
+
+const fetchPhoto = (recipeName) => {
+  if (photoCache[recipeName]) return Promise.resolve(photoCache[recipeName]);
+  return new Promise(resolve => {
+    photoQueue.push({ recipeName, resolve });
+    processPhotoQueue();
+  });
 };
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -460,29 +480,42 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
   const RecipeCard = ({r,showSave=false}) => {
     const [photo,setPhoto]=useState(r.photo_url ? {url:r.photo_url, thumb:r.photo_thumb, credit:r.photo_credit} : null);
     const [photoLoading,setPhotoLoading]=useState(false);
+    const [inView,setInView]=useState(false);
+    const cardRef = useRef(null);
     const rating=recipeRatings[r.id];
+
+    // Only start fetching a photo once this card actually scrolls into view —
+    // prevents all 300+ cards from firing Unsplash requests simultaneously on load.
+    useEffect(()=>{
+      if(photo || !cardRef.current) return;
+      const observer = new IntersectionObserver((entries)=>{
+        if(entries[0].isIntersecting){ setInView(true); observer.disconnect(); }
+      }, { rootMargin: "200px" });
+      observer.observe(cardRef.current);
+      return ()=>observer.disconnect();
+    },[photo]);
+
     useEffect(()=>{
       // Already have a cached photo on the recipe itself — nothing to do.
       if(r.photo_url){ if(!photo) setPhoto({url:r.photo_url, thumb:r.photo_thumb, credit:r.photo_credit}); return; }
-      // No cached photo yet and not an AI-preview result (those start with "ai_") — fetch once, then cache to DB.
-      if(!photo && !photoLoading){
-        setPhotoLoading(true);
-        fetchPhoto(r.name).then(p=>{
-          if(p){
-            setPhoto(p);
-            // Persist to Supabase so every future page load skips Unsplash entirely for this recipe.
-            if(r.id && !String(r.id).startsWith("ai_")){
-              supabase.from("recipes").update({ photo_url:p.url, photo_thumb:p.thumb, photo_credit:p.credit }).eq("id", r.id).then(()=>{
-                setRecipes(prev=>prev.map(rec=>rec.id===r.id?{...rec,photo_url:p.url,photo_thumb:p.thumb,photo_credit:p.credit}:rec));
-              });
-            }
+      // Not visible yet, or already have a photo, or already loading — skip.
+      if(!inView || photo || photoLoading) return;
+      setPhotoLoading(true);
+      fetchPhoto(r.name).then(p=>{
+        if(p){
+          setPhoto(p);
+          // Persist to Supabase so every future page load skips Unsplash entirely for this recipe.
+          if(r.id && !String(r.id).startsWith("ai_")){
+            supabase.from("recipes").update({ photo_url:p.url, photo_thumb:p.thumb, photo_credit:p.credit }).eq("id", r.id).then(()=>{
+              setRecipes(prev=>prev.map(rec=>rec.id===r.id?{...rec,photo_url:p.url,photo_thumb:p.thumb,photo_credit:p.credit}:rec));
+            });
           }
-          setPhotoLoading(false);
-        });
-      }
-    },[r.id]);
+        }
+        setPhotoLoading(false);
+      });
+    },[r.id, inView]);
     return (
-      <div style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,overflow:"hidden",cursor:"pointer",transition:"all 0.2s",boxShadow:"0 2px 8px rgba(20,54,42,0.07)"}}
+      <div ref={cardRef} style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,overflow:"hidden",cursor:"pointer",transition:"all 0.2s",boxShadow:"0 2px 8px rgba(20,54,42,0.07)"}}
         onClick={()=>openRecipe(r)}
         onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.borderColor="#1D4E35";e.currentTarget.style.boxShadow="0 8px 28px rgba(29,78,53,0.18)";}}
         onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.borderColor=C.border;e.currentTarget.style.boxShadow="0 2px 8px rgba(44,24,16,0.06)";}}>
