@@ -458,12 +458,29 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
 
   // ── RECIPE CARD COMPONENT ─────────────────────────────────────────────────
   const RecipeCard = ({r,showSave=false}) => {
-    const [photo,setPhoto]=useState(null);
+    const [photo,setPhoto]=useState(r.photo_url ? {url:r.photo_url, thumb:r.photo_thumb, credit:r.photo_credit} : null);
     const [photoLoading,setPhotoLoading]=useState(false);
     const rating=recipeRatings[r.id];
     useEffect(()=>{
-      if(!photo&&!photoLoading){setPhotoLoading(true);fetchPhoto(r.name).then(p=>{if(p)setPhoto(p);setPhotoLoading(false);});}
-    },[r.name]);
+      // Already have a cached photo on the recipe itself — nothing to do.
+      if(r.photo_url){ if(!photo) setPhoto({url:r.photo_url, thumb:r.photo_thumb, credit:r.photo_credit}); return; }
+      // No cached photo yet and not an AI-preview result (those start with "ai_") — fetch once, then cache to DB.
+      if(!photo && !photoLoading){
+        setPhotoLoading(true);
+        fetchPhoto(r.name).then(p=>{
+          if(p){
+            setPhoto(p);
+            // Persist to Supabase so every future page load skips Unsplash entirely for this recipe.
+            if(r.id && !String(r.id).startsWith("ai_")){
+              supabase.from("recipes").update({ photo_url:p.url, photo_thumb:p.thumb, photo_credit:p.credit }).eq("id", r.id).then(()=>{
+                setRecipes(prev=>prev.map(rec=>rec.id===r.id?{...rec,photo_url:p.url,photo_thumb:p.thumb,photo_credit:p.credit}:rec));
+              });
+            }
+          }
+          setPhotoLoading(false);
+        });
+      }
+    },[r.id]);
     return (
       <div style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,overflow:"hidden",cursor:"pointer",transition:"all 0.2s",boxShadow:"0 2px 8px rgba(20,54,42,0.07)"}}
         onClick={()=>openRecipe(r)}
