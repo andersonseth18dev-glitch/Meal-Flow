@@ -152,16 +152,20 @@ export default function App() {
     setAuthError(""); setAuthLoading(true);
     if(authMode==="signup") {
       const {error} = await supabase.auth.signUp({ email:authForm.email, password:authForm.password, options:{data:{name:authForm.name}} });
-      if(error) setAuthError(error.message);
-      else { showToast("Account created! Check your email to confirm. 🎉"); setScreen("home"); }
+      if(error) { setAuthError(error.message); setAuthLoading(false); return; }
+      showToast("Account created! Welcome to Anderson Heirloom Recipes! 🎉");
+      setAuthForm({name:"",email:"",password:""});
+      setAuthOpen(false);
+      setScreen("home");
     } else {
       const {error} = await supabase.auth.signInWithPassword({ email:authForm.email, password:authForm.password });
-      if(error) setAuthError(error.message);
-      else { showToast(`Welcome back! 👋`); setScreen("home"); }
+      if(error) { setAuthError(error.message); setAuthLoading(false); return; }
+      showToast("Welcome back! 👋");
+      setAuthForm({name:"",email:"",password:""});
+      setAuthOpen(false);
+      setScreen("home");
     }
     setAuthLoading(false);
-    setAuthForm({name:"",email:"",password:""});
-    setAuthOpen(false);
   };
 
   const logout = async () => { await supabase.auth.signOut(); setProfile(null); setMealPlan({}); showToast("Logged out.","info"); };
