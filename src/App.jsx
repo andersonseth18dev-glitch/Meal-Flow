@@ -141,6 +141,12 @@ export default function App() {
     if(data) setProfile(data);
   };
 
+  const isFreeTier      = ()=> !profile || profile.tier==="free";
+  const isPaidTier      = ()=> profile && (profile.tier==="paid"||profile.tier==="trial");
+  const userRecipeCount = ()=> recipes.filter(r=>r.imported_by===session?.user?.id).length;
+  const FREE_RECIPE_LIMIT = 5;
+  const canAddRecipe    = ()=> isPaidTier() || userRecipeCount() < FREE_RECIPE_LIMIT;
+
   const handleAuth = async () => {
     setAuthError(""); setAuthLoading(true);
     if(authMode==="signup") {
@@ -339,7 +345,9 @@ export default function App() {
       carbs:Number(r.carbs||0), fat:Number(r.fat||0),
       category:r.category, emoji:r.emoji||"🍽️", tags:r.tags||[],
       ingredients:r.ingredients||[], steps:r.steps||[],
-      source: session?"community":"built-in",
+      source: session?"family":"built-in",
+      visibility: session?(profile?.family_id?"family":"private"):"public",
+      family_id: profile?.family_id||null,
       imported_by: session?session.user.id:null,
       imported_by_name: profile?.name||session?.user?.email?.split("@")[0]||"Anonymous",
       collection: r.collection||"None",
@@ -589,7 +597,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           </div>
         </div>
         <div style={{display:"flex",gap:4,marginTop:12,overflowX:"auto",scrollbarWidth:"none"}}>
-          {[["home","🍽️ Recipes"],["search","🤖 AI Search"],["planner","📅 Plan"],["grocery","🛒 Groceries"],["profile","👤 Profile"],["tour","❓ Guide"]].map(([id,label])=>(
+          {[["home","🍽️ Recipes"],["community","🌍 Community"],["planner","📅 Plan"],["grocery","🛒 Groceries"],["profile","👤 Profile"],["tour","❓ Guide"]].map(([id,label])=>(
             <button key={id} style={{padding:"7px 14px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s",background:screen===id?"rgba(255,255,255,0.2)":"transparent",color:"#FFFFFF",opacity:screen===id?1:0.72,whiteSpace:"nowrap",border:screen===id?"1px solid rgba(255,255,255,0.25)":"1px solid transparent"}} onClick={()=>setScreen(id)}>
               {label}{id==="planner"&&plannedCount>0?<span style={{marginLeft:5,background:"rgba(255,255,255,0.3)",borderRadius:10,padding:"1px 6px",fontSize:10,color:"#fff"}}>{plannedCount}</span>:null}
             </button>
@@ -685,7 +693,14 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                   <div style={{fontSize:12,color:C.muted,marginTop:1}}>{loading?"Loading...":filtered.length+" recipe"+(filtered.length!==1?"s":"")+(search?` matching "${search}`:"")}</div>
                 </div>
               </div>
-              <button style={btnStyle()} onClick={()=>setImportOpen(true)}>＋ Add Recipe</button>
+              <button style={btnStyle()} onClick={()=>{
+                  if(!session){setImportOpen(true);return;}
+                  if(!canAddRecipe()){
+                    showToast(`Free accounts can add up to ${FREE_RECIPE_LIMIT} recipes. Upgrade to a Family Plan for unlimited!`,"error");
+                    return;
+                  }
+                  setImportOpen(true);
+                }}>＋ Add Recipe</button>
             </div>
 
             {/* Recipe grid */}
@@ -708,33 +723,42 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
       )}
 
       {/* ── AI SEARCH ── */}
-      {screen==="search"&&(
-        <div style={{padding:16}}>
-          <div style={{background:C.gold,borderRadius:14,padding:"18px 20px",marginBottom:16,textAlign:"center"}}>
-            <div style={{fontSize:24}}>🤖</div>
-            <div style={{fontWeight:900,fontSize:18,color:"#fff",marginBottom:2}}>AI Recipe Search</div>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.85)"}}>Search for any recipe imaginable — instant results</div>
+            {screen==="community"&&(
+        <div style={{maxWidth:800,margin:"0 auto",padding:"20px 16px"}}>
+          <div style={{background:`linear-gradient(135deg,#14362A,#1D4E35)`,borderRadius:14,padding:"24px 20px",marginBottom:20,textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>🌍</div>
+            <div style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:6}}>Community Recipes</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>Recipes shared by families just like yours</div>
           </div>
-          <div style={{marginBottom:12}}>
-            <div style={{fontSize:11,color:C.muted,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Try these →</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {["BBQ brisket","Grilled shrimp","Kids lemonade","Frozen margarita","Keto dinner","Chocolate dessert","Quick breakfast","Vegetarian pasta","Summer cocktails","Healthy snacks","Grilled veggies","Watermelon drinks"].map(s=>(
-                <button key={s} style={{padding:"6px 12px",borderRadius:20,background:"#F0F7F3",border:`1.5px solid #C5DDD3`,color:C.text,fontSize:12,cursor:"pointer",fontWeight:600}} onClick={()=>setAiQuery(s)}>{s}</button>
-              ))}
+          {!isPaidTier()?(
+            <div style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,padding:"40px 24px",textAlign:"center"}}>
+              <div style={{fontSize:52,marginBottom:16}}>🔒</div>
+              <div style={{fontWeight:800,fontSize:20,color:C.text,marginBottom:8}}>Family Plan Required</div>
+              <div style={{fontSize:14,color:C.muted,marginBottom:24,lineHeight:1.7,maxWidth:400,margin:"0 auto 24px"}}>
+                The Community page is available to Family Plan subscribers. Browse and discover recipes shared by real families, follow your favorites, and share your own.
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:24}}>
+                {["🍽️ Browse recipes from real families","❤️ Follow families whose recipes you love","🔔 Get notified when they share something new","📤 Share your own family recipes with the community"].map(f=>(
+                  <div key={f} style={{fontSize:14,color:C.text,fontWeight:500}}>{f}</div>
+                ))}
+              </div>
+              <button style={{...btnStyle(),padding:"12px 32px",fontSize:15,fontWeight:700}} onClick={()=>setScreen("profile")}>
+                Upgrade to Family Plan →
+              </button>
+              {!session&&<div style={{fontSize:13,color:C.muted,marginTop:12}}>Already have an account? <span style={{color:C.accent,cursor:"pointer",fontWeight:600}} onClick={()=>setAuthOpen(true)}>Sign in</span></div>}
             </div>
-          </div>
-          <div style={{display:"flex",gap:8,marginBottom:20}}>
-            <input style={{...inputStyle,flex:1,marginBottom:0,fontSize:15}} placeholder="e.g. 'grilled salmon' or 'summer kids drinks'..." value={aiQuery} onChange={e=>setAiQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&aiSearch()}/>
-            <button style={{...btnStyle(),padding:"10px 20px",opacity:aiLoading?0.6:1}} onClick={aiSearch} disabled={aiLoading}>{aiLoading?"⏳":"Search"}</button>
-          </div>
-          {aiLoading&&<div style={{textAlign:"center",padding:"40px 0"}}><div style={{fontSize:48,marginBottom:12}}>👨‍🍳</div><div style={{fontWeight:800,fontSize:18,color:C.text}}>Chef AI is cooking...</div><div style={{color:C.muted,fontSize:13,marginTop:6}}>Generating 4 recipes for "{aiQuery}"</div></div>}
-          {aiError&&<div style={{color:C.red,background:"#FEF2F2",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13}}>{aiError}</div>}
-          {aiResults.length>0&&(<><div style={{fontWeight:700,fontSize:14,color:C.muted,marginBottom:12}}>✨ {aiResults.length} recipes found for "{aiQuery}" — save any you like!</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))",gap:14}}>{aiResults.map((r,i)=><RecipeCard key={i} r={{...r,id:"ai_"+i,base_servings:r.baseServings,description:r.desc}} showSave={true}/>)}</div></>)}
-          {!aiSearched&&<div style={{background:`linear-gradient(135deg,#F0F7F3,#E8F5EE)`,borderRadius:16,padding:"32px 24px",textAlign:"center",border:`1.5px solid ${C.border}`}}><div style={{fontSize:56}}>🍳</div><div style={{fontWeight:900,fontSize:20,marginTop:12,color:C.text}}>Unlimited Recipes On Demand</div><div style={{fontSize:13,marginTop:10,lineHeight:2,color:C.muted}}>🔥 Grilling · 🧃 Kids Drinks · 🍹 Cocktails · 🥗 Healthy<br/>🍰 Desserts · 🌅 Breakfast · 🍿 Snacks · and millions more</div></div>}
+          ):(
+            <div style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,padding:"40px 24px",textAlign:"center"}}>
+              <div style={{fontSize:52,marginBottom:16}}>🚧</div>
+              <div style={{fontWeight:800,fontSize:20,color:C.text,marginBottom:8}}>Coming Soon</div>
+              <div style={{fontSize:14,color:C.muted,lineHeight:1.7}}>
+                The Community page is being built. Soon you will be able to browse recipes from other families, follow your favorites, and share your own.
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── PLANNER ── */}
       {screen==="planner"&&(
         <div style={{padding:16}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -865,7 +889,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
               <div>
                 <p style={{fontSize:14,color:C.muted,lineHeight:1.8,marginBottom:16}}>This app is built for the whole Anderson family. Store recipes, plan your meals, build grocery lists, and preserve family classics — all in one place.</p>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  {[{e:"🍽️",t:"70+ recipes",s:"Ready to browse"},{e:"🤖",t:"AI Search",s:"Unlimited recipes"},{e:"📅",t:"Meal Planner",s:"Plan your week"},{e:"🛒",t:"Grocery List",s:"Auto-generated"},{e:"📚",t:"Collections",s:"Grandma's, Dad's..."},{e:"👤",t:"Accounts",s:"Sync anywhere"}].map(f=>(
+                  {[{e:"🍽️",t:"70+ recipes",s:"Ready to browse"},{e:"🌍",t:"Community",s:"Recipes from families"},{e:"📅",t:"Meal Planner",s:"Plan your week"},{e:"🛒",t:"Grocery List",s:"Auto-generated"},{e:"📚",t:"Collections",s:"Grandma's, Dad's..."},{e:"👤",t:"Accounts",s:"Sync anywhere"}].map(f=>(
                     <div key={f.t} style={{background:"#F0F7F3",borderRadius:10,padding:"12px 14px",display:"flex",gap:10,alignItems:"center",border:`1px solid #C5DDD3`}}>
                       <span style={{fontSize:22}}>{f.e}</span>
                       <div><div style={{fontWeight:700,fontSize:13,color:C.text}}>{f.t}</div><div style={{fontSize:11,color:C.muted}}>{f.s}</div></div>
@@ -1418,6 +1442,12 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
             {importMode!=="menu"&&!importResult&&<button style={{...ghostBtn,fontSize:12,padding:"6px 12px",marginBottom:14}} onClick={()=>{setImportMode("menu");setImportError("");}}>← Back</button>}
 
             {importMode==="menu"&&(
+              <div>
+              {session&&isFreeTier()&&(
+                <div style={{background:"#FEF9C3",border:"1px solid #E8D9B0",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#78350F",fontWeight:500}}>
+                  Free account: {userRecipeCount()} of {FREE_RECIPE_LIMIT} recipes used.{userRecipeCount()>=FREE_RECIPE_LIMIT?" Upgrade to add more!":" Upgrade anytime for unlimited."}
+                </div>
+              )}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[{mode:"url",emoji:"🔗",title:"Import by URL",desc:"Paste any recipe link"},{mode:"text",emoji:"📋",title:"Paste Text",desc:"Copy text from anywhere"},{mode:"describe",emoji:"🎤",title:"Describe a Dish",desc:"Tell AI what you want"},{mode:"photo",emoji:"📸",title:"Photo of Recipe",desc:"Snap a cookbook or card"},{mode:"manual",emoji:"📝",title:"Manual Entry",desc:"Type it in yourself"}].map(opt=>(
                   <div key={opt.mode} style={{background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:12,padding:"16px 14px",cursor:"pointer",transition:"all 0.15s"}} onClick={()=>setImportMode(opt.mode)} onMouseEnter={e=>{e.currentTarget.style.borderColor=C.accent;e.currentTarget.style.background="#EEF6F1";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.background="#FDFAF7";}}>
@@ -1426,6 +1456,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                     <div style={{fontSize:11,color:C.muted,lineHeight:1.4}}>{opt.desc}</div>
                   </div>
                 ))}
+              </div>
               </div>
             )}
 
