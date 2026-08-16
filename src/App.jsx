@@ -171,7 +171,26 @@ export default function App() {
   const logout = async () => { await supabase.auth.signOut(); setProfile(null); setMealPlan({}); showToast("Logged out.","info"); };
 
   // ── LOAD RECIPES ──────────────────────────────────────────────────────────
-  useEffect(() => { loadRecipes(); loadCollections(); }, []);
+  useEffect(() => {
+    loadRecipes();
+    loadCollections();
+    // Handle Stripe redirect back to site
+    const path = window.location.pathname;
+    const params = new URLSearchParams(window.location.search);
+    if(path === "/success") {
+      showToast("🎉 Payment successful! Welcome to your Family Plan!");
+      window.history.replaceState({}, "", "/");
+      setScreen("profile");
+      // Reload profile to pick up new tier
+      supabase.auth.getSession().then(({data:{session}})=>{
+        if(session) loadProfile(session.user.id);
+      });
+    } else if(path === "/cancel") {
+      showToast("Checkout cancelled — no charge was made.", "info");
+      window.history.replaceState({}, "", "/");
+      setScreen("profile");
+    }
+  }, []);
 
   const loadCollections = async () => {
     const {data} = await supabase.from("collections").select("*").order("name");
