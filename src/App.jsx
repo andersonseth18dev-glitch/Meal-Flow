@@ -119,6 +119,7 @@ export default function App() {
   const [importError,     setImportError]     = useState("");
   const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",categories:[],collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
 
+  const [authOpen,  setAuthOpen]  = useState(false);
   const [authMode,  setAuthMode]  = useState("login");
   const [authForm,  setAuthForm]  = useState({name:"",email:"",password:""});
   const [authError, setAuthError] = useState("");
@@ -160,6 +161,7 @@ export default function App() {
     }
     setAuthLoading(false);
     setAuthForm({name:"",email:"",password:""});
+    setAuthOpen(false);
   };
 
   const logout = async () => { await supabase.auth.signOut(); setProfile(null); setMealPlan({}); showToast("Logged out.","info"); };
@@ -631,7 +633,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
             {session&&profile?(<>
               <div style={{background:C.accent,borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#fff"}}>{profile.name[0].toUpperCase()}</div>
               <button onClick={logout} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:12}}>Sign out</button>
-            </>):(<button onClick={()=>{setScreen("profile");setAuthMode("login");}} style={{...btnStyle("#FFFFFF"),fontSize:12,padding:"7px 14px",color:C.navy}}>Sign In</button>)}
+            </>):(<button onClick={()=>{setAuthOpen(true);setAuthMode("login");}} style={{...btnStyle("#FFFFFF"),fontSize:12,padding:"7px 14px",color:C.navy}}>Sign In</button>)}
           </div>
         </div>
         <div style={{display:"flex",gap:4,marginTop:12,overflowX:"auto",scrollbarWidth:"none"}}>
@@ -1315,6 +1317,50 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           </div>
         );
       })()}
+
+      {/* ── AUTH MODAL ── */}
+      {authOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(14,30,22,0.82)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setAuthOpen(false)}>
+          <div style={{background:C.card,borderRadius:18,padding:"28px 24px",width:"100%",maxWidth:400,border:`1.5px solid ${C.border}`,boxShadow:"0 20px 60px rgba(14,30,22,0.2)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{fontSize:32,marginBottom:8}}>🏡</div>
+              <div style={{fontWeight:800,fontSize:20,color:C.text}}>Anderson Heirloom Recipes</div>
+              <div style={{fontSize:13,color:C.muted,marginTop:4}}>{authMode==="login"?"Welcome back!":"Create your free account"}</div>
+            </div>
+
+            {authMode==="signup"&&(
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Your Name</div>
+                <input style={{width:"100%",padding:"10px 14px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} placeholder="e.g. Seth Anderson" value={authForm.name} onChange={e=>setAuthForm(p=>({...p,name:e.target.value}))}/>
+              </div>
+            )}
+
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Email</div>
+              <input style={{width:"100%",padding:"10px 14px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} placeholder="you@example.com" type="email" value={authForm.email} onChange={e=>setAuthForm(p=>({...p,email:e.target.value}))}/>
+            </div>
+
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Password</div>
+              <input style={{width:"100%",padding:"10px 14px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} placeholder="••••••••" type="password" value={authForm.password} onChange={e=>setAuthForm(p=>({...p,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
+            </div>
+
+            {authError&&<div style={{color:C.red,fontSize:13,marginBottom:12,background:"#FEF2F2",padding:"8px 12px",borderRadius:8}}>{authError}</div>}
+
+            <button style={{...{border:"none",borderRadius:10,padding:"12px 0",cursor:"pointer",fontWeight:700,fontSize:14,color:"#fff"},background:`linear-gradient(135deg,${C.navy},${C.accent})`,width:"100%",opacity:authLoading?0.7:1}} onClick={handleAuth} disabled={authLoading}>
+              {authLoading?"Please wait...":(authMode==="login"?"Sign In":"Create Account")}
+            </button>
+
+            <div style={{textAlign:"center",marginTop:14,fontSize:13,color:C.muted}}>
+              {authMode==="login"?(
+                <>Don't have an account? <span style={{color:C.accent,cursor:"pointer",fontWeight:600}} onClick={()=>{setAuthMode("signup");setAuthError("");}}>Sign up free</span></>
+              ):(
+                <>Already have an account? <span style={{color:C.accent,cursor:"pointer",fontWeight:600}} onClick={()=>{setAuthMode("login");setAuthError("");}}>Sign in</span></>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── RECIPE DETAIL MODAL ── */}
       {selectedRecipe&&(
