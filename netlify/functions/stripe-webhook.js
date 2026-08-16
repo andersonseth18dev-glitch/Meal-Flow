@@ -16,6 +16,9 @@ exports.handler = async (event) => {
   console.log("SUPABASE_URL set:", !!supabaseUrl);
   console.log("SUPABASE_SERVICE_KEY set:", !!supabaseKey);
   console.log("STRIPE_WEBHOOK_SECRET set:", !!process.env.STRIPE_WEBHOOK_SECRET);
+  console.log("SUPABASE_URL value:", supabaseUrl);
+  console.log("SERVICE_KEY first 20 chars:", supabaseKey ? supabaseKey.substring(0, 20) : "NOT SET");
+  console.log("SERVICE_KEY length:", supabaseKey ? supabaseKey.length : 0);
 
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method not allowed" };
