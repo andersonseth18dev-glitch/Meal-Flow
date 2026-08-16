@@ -70,7 +70,10 @@ exports.handler = async (event) => {
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         console.log("Subscription status:", subscription.status);
 
-        const periodEnd  = new Date(subscription.current_period_end * 1000).toISOString();
+        const trialEnd   = subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null;
+        const periodEnd  = subscription.current_period_end
+          ? new Date(subscription.current_period_end * 1000).toISOString()
+          : trialEnd || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
         const isTrialing = subscription.status === "trialing";
         const tier       = "paid";
 
