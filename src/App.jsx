@@ -172,6 +172,44 @@ export default function App() {
     if(data) setAllCollections(data.map(c=>c.name));
   };
 
+  // ── STRIPE CHECKOUT ───────────────────────────────────────────────────────
+  const startCheckout = async (priceKey) => {
+    if(!session) { setAuthOpen(true); return; }
+    try {
+      const res = await fetch("/.netlify/functions/stripe-checkout", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          priceKey,
+          userId:     session.user.id,
+          userEmail:  session.user.email,
+          familyName: profile?.name ? profile.name + " Family" : "My Family",
+          isTrialing: true,
+        }),
+      });
+      const data = await res.json();
+      if(data.url) window.location.href = data.url;
+      else showToast("Could not start checkout. Please try again.", "error");
+    } catch(err) {
+      showToast("Checkout error: " + err.message, "error");
+    }
+  };
+
+  const openBillingPortal = async () => {
+    if(!profile?.stripe_customer_id) return;
+    try {
+      const res = await fetch("/.netlify/functions/stripe-portal", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ customerId: profile.stripe_customer_id }),
+      });
+      const data = await res.json();
+      if(data.url) window.location.href = data.url;
+    } catch(err) {
+      showToast("Could not open billing portal.", "error");
+    }
+  };
+
   const loadRecipes = async () => {
     setLoading(true);
     const {data,error} = await supabase.from("recipes").select("*").order("created_at",{ascending:false});
@@ -832,55 +870,113 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
 
       {/* ── PROFILE ── */}
       {screen==="profile"&&(
-        <div style={{padding:16,maxWidth:420,margin:"0 auto"}}>
-          {session&&profile?(<>
-            <div style={{textAlign:"center",padding:"24px 0 20px"}}>
-              <div style={{width:72,height:72,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:900,color:"#fff",margin:"0 auto 12px"}}>{profile.name[0].toUpperCase()}</div>
-              <div style={{fontWeight:900,fontSize:22,color:C.text}}>{profile.name}</div>
-              <div style={{color:C.muted,fontSize:14}}>{profile.email}</div>
-              <div style={{fontSize:12,color:C.muted,marginTop:4}}>Member since {fmtDate(profile.created_at)}</div>
+        <div style={{maxWidth:600,margin:"0 auto",padding:"20px 16px"}}>
+          {!session?(
+            <div style={{background:C.card,borderRadius:16,border:`1.5px solid ${C.border}`,padding:"40px 24px",textAlign:"center"}}>
+              <div style={{fontSize:48,marginBottom:12}}>👤</div>
+              <div style={{fontWeight:800,fontSize:20,color:C.text,marginBottom:8}}>Sign in to your account</div>
+              <div style={{fontSize:14,color:C.muted,marginBottom:24}}>Save your meal plans, access your family vault, and more.</div>
+              <button style={{...btnStyle(),padding:"12px 32px",fontSize:15}} onClick={()=>setAuthOpen(true)}>Sign In / Create Account</button>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20,marginTop:4}}>
-              <div style={statCard}><div style={{fontSize:24,fontWeight:900,color:C.accent}}>{recipes.filter(r=>r.imported_by===session.user.id).length}</div><div style={{fontSize:12,color:C.muted}}>My Recipes Added</div></div>
-              <div style={statCard}><div style={{fontSize:24,fontWeight:900,color:C.green}}>{plannedCount}</div><div style={{fontSize:12,color:C.muted}}>Meals Planned</div></div>
-            </div>
-            <div style={{fontWeight:700,marginBottom:10,color:C.text}}>My Diet Preferences</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
-              {DIETS.filter(d=>d!=="All").map(d=>{
-                const active=(profile.diet_prefs||[]).includes(d);
-                return <button key={d} style={{...pill(active,C.green),border:`1.5px solid ${active?C.green:C.border}`,background:active?"#D4EDDA":"#FFFAF5"}} onClick={async()=>{
-                  const prefs=profile.diet_prefs||[];
-                  const updated=active?prefs.filter(p=>p!==d):[...prefs,d];
-                  const updatedProfile={...profile,diet_prefs:updated};
-                  setProfile(updatedProfile);
-                  await supabase.from("profiles").update({diet_prefs:updated}).eq("id",session.user.id);
-                }}>{active?"✓ ":""}{d}</button>;
-              })}
-            </div>
-            <button style={{...ghostBtn,width:"100%"}} onClick={logout}>Sign Out</button>
-          </>):(
-            <div style={{paddingTop:30,maxWidth:380,margin:"0 auto"}}>
-              <div style={{fontWeight:900,fontSize:22,marginBottom:4,textAlign:"center",color:C.text}}>{authMode==="login"?"Welcome back 👋":"Create your account ✨"}</div>
-              <div style={{color:C.muted,fontSize:13,textAlign:"center",marginBottom:24}}>{authMode==="login"?"Sign in to save your recipes and meal plans":"Free forever — sync across all your devices"}</div>
-              {authMode==="signup"&&<input style={inputStyle} placeholder="Your name" value={authForm.name} onChange={e=>setAuthForm(p=>({...p,name:e.target.value}))}/>}
-              <input style={inputStyle} placeholder="Email address" type="email" value={authForm.email} onChange={e=>setAuthForm(p=>({...p,email:e.target.value}))}/>
-              <input style={inputStyle} placeholder="Password" type="password" value={authForm.password} onChange={e=>setAuthForm(p=>({...p,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleAuth()}/>
-              {authError&&<div style={{color:C.red,fontSize:13,marginBottom:10}}>{authError}</div>}
-              <button style={{...btnStyle(),width:"100%",padding:"12px 0",marginBottom:12,opacity:authLoading?0.7:1}} onClick={handleAuth} disabled={authLoading}>{authLoading?"Please wait...":authMode==="login"?"Sign In":"Create Account"}</button>
-              <div style={{textAlign:"center",fontSize:13,color:C.muted}}>
-                {authMode==="login"?"Don't have an account? ":"Already have an account? "}
-                <span style={{color:C.accent,cursor:"pointer",fontWeight:700}} onClick={()=>{setAuthMode(authMode==="login"?"signup":"login");setAuthError("");}}>
-                  {authMode==="login"?"Sign up free":"Sign in"}
-                </span>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+              {/* Profile card */}
+              <div style={{background:C.card,borderRadius:16,border:`1.5px solid ${C.border}`,padding:"20px"}}>
+                <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:16}}>
+                  <div style={{width:56,height:56,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"#fff",flexShrink:0}}>
+                    {(profile?.name||session.user.email||"?")[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:17,color:C.text}}>{profile?.name||session.user.email?.split("@")[0]}</div>
+                    <div style={{fontSize:13,color:C.muted}}>{session.user.email}</div>
+                    <div style={{marginTop:4,display:"inline-block",padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,
+                      background:isPaidTier()?"#D1FAE5":"#F3F4F6",
+                      color:isPaidTier()?"#065F46":"#6B7280"}}>
+                      {profile?.tier==="trial"?"✨ Free Trial (14 days)":profile?.tier==="paid"?"✅ Family Plan":"Free Account"}
+                    </div>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+                  {[{n:"Recipes Added",v:userRecipeCount()},{n:"Plan Limit",v:isPaidTier()?"Unlimited":`${FREE_RECIPE_LIMIT-userRecipeCount()} left`},{n:"Member Since",v:new Date(session.user.created_at).toLocaleDateString("en-US",{month:"short",year:"numeric"})}].map(s=>(
+                    <div key={s.n} style={{background:"#F0F7F3",borderRadius:10,padding:"10px 8px",textAlign:"center",border:`1px solid #C5DDD3`}}>
+                      <div style={{fontSize:16,fontWeight:700,color:C.accent}}>{s.v}</div>
+                      <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.n}</div>
+                    </div>
+                  ))}
+                </div>
+                {isPaidTier()&&profile?.family_id&&(
+                  <div style={{background:"#F0F7F3",borderRadius:10,padding:"12px 14px",marginBottom:12,border:`1px solid #C5DDD3`}}>
+                    <div style={{fontSize:12,fontWeight:700,color:C.navy,marginBottom:4}}>Your Family Code</div>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <div style={{fontFamily:"monospace",fontSize:18,fontWeight:900,color:C.accent,letterSpacing:2}}>{profile?.families?.family_code||"Loading..."}</div>
+                      <button style={{...ghostBtn,fontSize:11,padding:"4px 10px"}} onClick={()=>{navigator.clipboard.writeText(profile?.families?.family_code||"");showToast("Family code copied! 📋");}}>Copy</button>
+                    </div>
+                    <div style={{fontSize:11,color:C.muted,marginTop:4}}>Share this code with family members when they sign up</div>
+                  </div>
+                )}
+                <button style={{...ghostBtn,width:"100%",color:C.red,borderColor:C.red}} onClick={()=>supabase.auth.signOut()}>Sign Out</button>
               </div>
+
+              {/* Upgrade / Billing section */}
+              {!isPaidTier()?(
+                <div style={{background:C.card,borderRadius:16,border:`1.5px solid ${C.border}`,padding:"20px"}}>
+                  <div style={{fontWeight:800,fontSize:16,color:C.text,marginBottom:4}}>Upgrade to Family Plan</div>
+                  <div style={{fontSize:13,color:C.muted,marginBottom:16,lineHeight:1.6}}>Unlock unlimited recipes, private family vault, community page, and up to 2 included member accounts.</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                    {["🍽️ Unlimited recipe adding","🔒 Private family recipe vault","🌍 Community recipe page","👨‍👩‍👧‍👦 2 family member accounts included","🔔 Follow families + notifications","14-day free trial included"].map(f=>(
+                      <div key={f} style={{fontSize:13,color:C.text,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{color:C.green,fontWeight:700}}>✓</span>{f}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <button style={{...btnStyle(),padding:"12px 0",flexDirection:"column",display:"flex",alignItems:"center",gap:2}} onClick={()=>startCheckout("family_monthly")}>
+                      <span style={{fontWeight:800,fontSize:15}}>$15 / month</span>
+                      <span style={{fontSize:11,opacity:0.85}}>Start free trial</span>
+                    </button>
+                    <button style={{...btnStyle(C.accent2),padding:"12px 0",flexDirection:"column",display:"flex",alignItems:"center",gap:2}} onClick={()=>startCheckout("family_annual")}>
+                      <span style={{fontWeight:800,fontSize:15}}>$120 / year</span>
+                      <span style={{fontSize:11,opacity:0.85}}>Save $60 🎉</span>
+                    </button>
+                  </div>
+                </div>
+              ):(
+                <div style={{background:C.card,borderRadius:16,border:`1.5px solid ${C.border}`,padding:"20px"}}>
+                  <div style={{fontWeight:800,fontSize:16,color:C.text,marginBottom:4}}>Billing & Subscription</div>
+                  <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Manage your payment method, view invoices, or cancel your plan.</div>
+                  <button style={{...btnStyle(),width:"100%",padding:"12px 0"}} onClick={openBillingPortal}>
+                    Manage Billing →
+                  </button>
+                </div>
+              )}
+
+              {/* Diet preferences */}
+              <div style={{background:C.card,borderRadius:16,border:`1.5px solid ${C.border}`,padding:"20px"}}>
+                <div style={{fontWeight:800,fontSize:15,color:C.text,marginBottom:12}}>Diet Preferences</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {["Keto","Vegetarian","Vegan","Gluten-Free","Dairy-Free","Paleo"].map(d=>{
+                    const active=(profile?.diet_prefs||[]).includes(d);
+                    return(
+                      <button key={d} onClick={async()=>{
+                        const cur=profile?.diet_prefs||[];
+                        const next=active?cur.filter(x=>x!==d):[...cur,d];
+                        await supabase.from("profiles").update({diet_prefs:next}).eq("id",session.user.id);
+                        setProfile(p=>({...p,diet_prefs:next}));
+                      }} style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${active?C.accent:C.border}`,background:active?"#D1FAE5":"transparent",color:active?C.accent:C.muted,fontSize:12,cursor:"pointer",fontWeight:active?700:400}}>
+                        {active?"✓ ":""}{d}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
             </div>
           )}
         </div>
       )}
 
-
-      {/* ── TOUR / GUIDE SCREEN ── */}
-      {screen==="tour"&&(()=>{
+            {screen==="tour"&&(()=>{
         const steps = [
           {
             icon:"🏡", title:"Welcome to Anderson Heirloom Recipes",
