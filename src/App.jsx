@@ -767,7 +767,8 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
               <button style={btnStyle()} onClick={()=>{
                   if(!session){setImportOpen(true);return;}
                   if(!canAddRecipe()){
-                    showToast(`Free accounts can add up to ${FREE_RECIPE_LIMIT} recipes. Upgrade to a Family Plan for unlimited!`,"error");
+                    showToast(`You've used all ${FREE_RECIPE_LIMIT} free recipe slots — upgrade to add unlimited recipes!`,"error");
+                    setTimeout(()=>setScreen("profile"), 1500);
                     return;
                   }
                   setImportOpen(true);
@@ -1617,8 +1618,9 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
             {importMode==="menu"&&(
               <div>
               {session&&isFreeTier()&&(
-                <div style={{background:"#FEF9C3",border:"1px solid #E8D9B0",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#78350F",fontWeight:500}}>
-                  Free account: {userRecipeCount()} of {FREE_RECIPE_LIMIT} recipes used.{userRecipeCount()>=FREE_RECIPE_LIMIT?" Upgrade to add more!":" Upgrade anytime for unlimited."}
+                <div style={{background:"#FEF9C3",border:"1px solid #E8D9B0",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#78350F",fontWeight:500,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                  <span>Free account: {userRecipeCount()} of {FREE_RECIPE_LIMIT} recipes used.</span>
+                  <span style={{color:C.accent,fontWeight:700,cursor:"pointer",textDecoration:"underline",whiteSpace:"nowrap"}} onClick={()=>{setImportOpen(false);setScreen("profile");}}>Upgrade →</span>
                 </div>
               )}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
