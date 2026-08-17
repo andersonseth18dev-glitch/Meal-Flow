@@ -138,7 +138,11 @@ export default function App() {
   }, []);
 
   const loadProfile = async (userId) => {
-    const {data} = await supabase.from("profiles").select("*").eq("id",userId).single();
+    const {data} = await supabase
+      .from("profiles")
+      .select("*, families(id, name, family_code)")
+      .eq("id", userId)
+      .single();
     if(data) setProfile(data);
   };
 
@@ -934,7 +938,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                   <div style={{background:"#F0F7F3",borderRadius:10,padding:"12px 14px",marginBottom:12,border:`1px solid #C5DDD3`}}>
                     <div style={{fontSize:12,fontWeight:700,color:C.navy,marginBottom:4}}>Your Family Code</div>
                     <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                      <div style={{fontFamily:"monospace",fontSize:18,fontWeight:900,color:C.accent,letterSpacing:2}}>{profile?.families?.family_code||"Loading..."}</div>
+                      <div style={{fontFamily:"monospace",fontSize:18,fontWeight:900,color:C.accent,letterSpacing:2}}>{profile?.families?.family_code || "Loading..."}</div>
                       <button style={{...ghostBtn,fontSize:11,padding:"4px 10px"}} onClick={()=>{navigator.clipboard.writeText(profile?.families?.family_code||"");showToast("Family code copied! 📋");}}>Copy</button>
                     </div>
                     <div style={{fontSize:11,color:C.muted,marginTop:4}}>Share this code with family members when they sign up</div>
