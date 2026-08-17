@@ -138,12 +138,14 @@ export default function App() {
   }, []);
 
   const loadProfile = async (userId) => {
-    const {data} = await supabase
+    const {data, error} = await supabase
       .from("profiles")
       .select("*, families(id, name, family_code)")
       .eq("id", userId)
       .single();
-    if(data) setProfile(data);
+    if(error) console.error("Profile load error:", error);
+    if(data) { console.log("Profile loaded:", data.tier, data.family_id); setProfile(data); }
+    else console.warn("No profile data returned for userId:", userId);
   };
 
   const isFreeTier      = ()=> !profile || profile.tier==="free";
@@ -657,8 +659,10 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{fontSize:15,fontWeight:900,color:"#E8F5EE",letterSpacing:"-0.3px"}}>🏡 Anderson Heirloom Recipes</div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {session&&profile?(<>
-              <div style={{background:C.accent,borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#fff"}}>{profile.name[0].toUpperCase()}</div>
+            {session?(<>
+              <div style={{background:C.accent,borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#fff"}}>
+                {profile?.name?profile.name[0].toUpperCase():session.user.email[0].toUpperCase()}
+              </div>
               <button onClick={logout} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:12}}>Sign out</button>
             </>):(<button onClick={()=>{setAuthOpen(true);setAuthMode("login");}} style={{...btnStyle("#FFFFFF"),fontSize:12,padding:"7px 14px",color:C.navy}}>Sign In</button>)}
           </div>
