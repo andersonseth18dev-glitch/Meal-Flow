@@ -121,7 +121,7 @@ export default function App() {
 
   const [authOpen,  setAuthOpen]  = useState(false);
   const [authMode,  setAuthMode]  = useState("login");
-  const [authForm,  setAuthForm]  = useState({name:"",email:"",password:""});
+  const [authForm,  setAuthForm]  = useState({name:"",email:"",password:"",familyCode:""});
   const [authError, setAuthError] = useState("");
   const [authLoading,setAuthLoading]=useState(false);
 
@@ -157,17 +157,71 @@ export default function App() {
   const handleAuth = async () => {
     setAuthError(""); setAuthLoading(true);
     if(authMode==="signup") {
-      const {error} = await supabase.auth.signUp({ email:authForm.email, password:authForm.password, options:{data:{name:authForm.name}} });
+      // Validate family code if provided
+      let familyData = null;
+      if(authForm.familyCode.trim()) {
+        const code = authForm.familyCode.trim().toUpperCase();
+        const {data:fam, error:famErr} = await supabase
+          .from("families")
+          .select("id, name, owner_id")
+          .eq("family_code", code)
+          .single();
+        if(famErr || !fam) {
+          setAuthError("Invalid family code. Please check with your family account holder.");
+          setAuthLoading(false);
+          return;
+        }
+        // Verify family has active subscription
+        const {data:sub} = await supabase
+          .from("subscriptions")
+          .select("status")
+          .eq("family_id", fam.id)
+          .in("status", ["active","trialing","past_due"])
+          .single();
+        if(!sub) {
+          setAuthError("This family's subscription is not active. Please check with your family account holder.");
+          setAuthLoading(false);
+          return;
+        }
+        familyData = fam;
+      }
+
+      // Create the account
+      const {data:signUpData, error} = await supabase.auth.signUp({
+        email: authForm.email,
+        password: authForm.password,
+        options: { data: { name: authForm.name } }
+      });
       if(error) { setAuthError(error.message); setAuthLoading(false); return; }
-      showToast("Account created! Welcome to Anderson Heirloom Recipes! 🎉");
-      setAuthForm({name:"",email:"",password:""});
+
+      // If family code was valid, link to family
+      if(familyData && signUpData?.user) {
+        const userId = signUpData.user.id;
+        // Wait briefly for profile trigger to run
+        await new Promise(r => setTimeout(r, 1000));
+        await supabase.from("profiles").update({
+          tier:        "paid",
+          family_id:   familyData.id,
+          family_role: "member",
+          name:        authForm.name || authForm.email.split("@")[0],
+        }).eq("id", userId);
+        await supabase.from("family_members").insert({
+          family_id:  familyData.id,
+          profile_id: userId,
+          role:       "member",
+        });
+        showToast(`Welcome to the ${familyData.name}! 🎉`);
+      } else {
+        showToast("Account created! Welcome to Anderson Heirloom Recipes! 🎉");
+      }
+      setAuthForm({name:"",email:"",password:"",familyCode:""});
       setAuthOpen(false);
       setScreen("home");
     } else {
       const {error} = await supabase.auth.signInWithPassword({ email:authForm.email, password:authForm.password });
       if(error) { setAuthError(error.message); setAuthLoading(false); return; }
       showToast("Welcome back! 👋");
-      setAuthForm({name:"",email:"",password:""});
+      setAuthForm({name:"",email:"",password:"",familyCode:""});
       setAuthOpen(false);
       setScreen("home");
     }
@@ -1361,10 +1415,16 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
             </div>
 
             {authMode==="signup"&&(
+              <>
               <div style={{marginBottom:10}}>
                 <div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Your Name</div>
                 <input style={{width:"100%",padding:"10px 14px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}} placeholder="e.g. Seth Anderson" value={authForm.name} onChange={e=>setAuthForm(p=>({...p,name:e.target.value}))}/>
               </div>
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Family Code <span style={{fontWeight:400,color:C.muted}}>(optional — enter if joining a family plan)</span></div>
+                <input style={{width:"100%",padding:"10px 14px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"monospace",letterSpacing:1}} placeholder="e.g. ANDERSON-4821" value={authForm.familyCode} onChange={e=>setAuthForm(p=>({...p,familyCode:e.target.value.toUpperCase()}))}/>
+              </div>
+              </>
             )}
 
             <div style={{marginBottom:10}}>
