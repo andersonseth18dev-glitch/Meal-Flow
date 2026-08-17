@@ -120,7 +120,8 @@ export default function App() {
   const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",categories:[],collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
 
   const [authOpen,      setAuthOpen]      = useState(false);
-  const [familyMembers, setFamilyMembers] = useState([]);
+  const [familyMembers,        setFamilyMembers]        = useState([]);
+  const [familyMembersLoading, setFamilyMembersLoading] = useState(false);
   const [authMode,  setAuthMode]  = useState("login");
   const [authForm,  setAuthForm]  = useState({name:"",email:"",password:"",familyCode:""});
   const [authError, setAuthError] = useState("");
@@ -191,12 +192,14 @@ export default function App() {
       setProfile(data);
       // Load family members if owner
       if(data.family_id && data.family_role === "owner") {
+        setFamilyMembersLoading(true);
         supabase
           .from("family_members")
           .select("*, profiles(id, name, email, tier)")
           .eq("family_id", data.family_id)
           .then(({data:members}) => {
             if(members) setFamilyMembers(members);
+            setFamilyMembersLoading(false);
           });
       }
     }
@@ -1124,7 +1127,10 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                         )}
                       </div>
                     ))}
-                    {familyMembers.length===0&&(
+                    {familyMembersLoading&&(
+                      <div style={{textAlign:"center",padding:"20px 0",color:C.muted,fontSize:13}}>Loading members...</div>
+                    )}
+                    {!familyMembersLoading&&familyMembers.length===0&&(
                       <div style={{textAlign:"center",padding:"20px 0",color:C.muted,fontSize:13}}>No family members yet. Share your family code to invite them!</div>
                     )}
                   </div>
