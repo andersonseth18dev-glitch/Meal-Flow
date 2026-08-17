@@ -119,7 +119,8 @@ export default function App() {
   const [importError,     setImportError]     = useState("");
   const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",categories:[],collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
 
-  const [authOpen,  setAuthOpen]  = useState(false);
+  const [authOpen,      setAuthOpen]      = useState(false);
+  const [familyMembers, setFamilyMembers] = useState([]);
   const [authMode,  setAuthMode]  = useState("login");
   const [authForm,  setAuthForm]  = useState({name:"",email:"",password:"",familyCode:""});
   const [authError, setAuthError] = useState("");
@@ -161,6 +162,17 @@ export default function App() {
             role:       "member",
           }, { onConflict: "family_id,profile_id" });
           console.log("Family join processed for:", familyName);
+          // Re-fetch profile now that family join is complete
+          const {data:updatedProfile} = await supabase
+            .from("profiles")
+            .select("*, families!profiles_family_id_fkey(id, name, family_code)")
+            .eq("id", userId)
+            .single();
+          if(updatedProfile) {
+            setProfile(updatedProfile);
+            showToast(`✅ You have joined the ${familyName} — welcome!`);
+          }
+          return; // Skip the fetch below since we already have fresh data
         }
       } catch(e) {
         console.error("Error processing family join:", e);
@@ -174,7 +186,20 @@ export default function App() {
       .eq("id", userId)
       .single();
     if(error) console.error("Profile load error:", error);
-    if(data) { console.log("Profile loaded:", data.tier, data.family_id); setProfile(data); }
+    if(data) {
+      console.log("Profile loaded:", data.tier, data.family_id);
+      setProfile(data);
+      // Load family members if owner
+      if(data.family_id && data.family_role === "owner") {
+        supabase
+          .from("family_members")
+          .select("*, profiles(id, name, email, tier)")
+          .eq("family_id", data.family_id)
+          .then(({data:members}) => {
+            if(members) setFamilyMembers(members);
+          });
+      }
+    }
     else console.warn("No profile data returned for userId:", userId);
   };
 
@@ -1063,6 +1088,49 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                   <button style={{...btnStyle(),width:"100%",padding:"12px 0"}} onClick={openBillingPortal}>
                     Manage Billing →
                   </button>
+                </div>
+              )}
+
+              {/* Family member management — owners only */}
+              {isPaidTier()&&profile?.family_role==="owner"&&(
+                <div style={{background:C.card,borderRadius:16,border:`1.5px solid ${C.border}`,padding:"20px"}}>
+                  <div style={{fontWeight:800,fontSize:16,color:C.text,marginBottom:4}}>Family Members</div>
+                  <div style={{fontSize:13,color:C.muted,marginBottom:16}}>
+                    {familyMembers.length} member{familyMembers.length!==1?"s":""} in your family plan. Share your family code to add more.
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                    {familyMembers.map(m=>(
+                      <div key={m.profile_id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#F0F7F3",borderRadius:10,border:`1px solid #C5DDD3`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{width:34,height:34,borderRadius:"50%",background:m.role==="owner"?C.accent:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",flexShrink:0}}>
+                            {(m.profiles?.name||m.profiles?.email||"?")[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{fontWeight:700,fontSize:13,color:C.text}}>{m.profiles?.name||m.profiles?.email?.split("@")[0]||"Member"}</div>
+                            <div style={{fontSize:11,color:C.muted}}>{m.profiles?.email} · {m.role==="owner"?"Account Owner":"Family Member"}</div>
+                          </div>
+                        </div>
+                        {m.role!=="owner"&&(
+                          <button style={{background:"transparent",border:`1px solid ${C.red}`,color:C.red,borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}
+                            onClick={async()=>{
+                              if(!window.confirm(`Remove ${m.profiles?.name||"this member"} from your family?`)) return;
+                              await supabase.from("family_members").delete().eq("family_id",profile.family_id).eq("profile_id",m.profile_id);
+                              await supabase.from("profiles").update({tier:"free",family_id:null,family_role:null}).eq("id",m.profile_id);
+                              setFamilyMembers(prev=>prev.filter(x=>x.profile_id!==m.profile_id));
+                              showToast("Member removed from family plan.");
+                            }}>
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {familyMembers.length===0&&(
+                      <div style={{textAlign:"center",padding:"20px 0",color:C.muted,fontSize:13}}>No family members yet. Share your family code to invite them!</div>
+                    )}
+                  </div>
+                  <div style={{background:"#F0F7F3",borderRadius:10,padding:"10px 14px",border:`1px solid #C5DDD3`,fontSize:12,color:C.muted}}>
+                    💡 Family members join by entering your code <strong style={{color:C.accent,fontFamily:"monospace"}}>{profile?.families?.family_code}</strong> when signing up.
+                  </div>
                 </div>
               )}
 
