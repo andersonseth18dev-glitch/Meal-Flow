@@ -138,6 +138,36 @@ export default function App() {
   }, []);
 
   const loadProfile = async (userId) => {
+    // Process any pending family join from signup
+    const pending = localStorage.getItem("pendingFamilyJoin");
+    if(pending) {
+      try {
+        const { userId:pendingId, familyId, familyName, userName } = JSON.parse(pending);
+        if(pendingId === userId) {
+          localStorage.removeItem("pendingFamilyJoin");
+          // Wait for profile trigger to create the row
+          await new Promise(r => setTimeout(r, 1500));
+          // Update profile with family info
+          await supabase.from("profiles").update({
+            tier:        "paid",
+            family_id:   familyId,
+            family_role: "member",
+            name:        userName,
+          }).eq("id", userId);
+          // Add to family_members
+          await supabase.from("family_members").upsert({
+            family_id:  familyId,
+            profile_id: userId,
+            role:       "member",
+          }, { onConflict: "family_id,profile_id" });
+          console.log("Family join processed for:", familyName);
+        }
+      } catch(e) {
+        console.error("Error processing family join:", e);
+        localStorage.removeItem("pendingFamilyJoin");
+      }
+    }
+
     const {data, error} = await supabase
       .from("profiles")
       .select("*, families!profiles_family_id_fkey(id, name, family_code)")
@@ -194,23 +224,20 @@ export default function App() {
       });
       if(error) { setAuthError(error.message); setAuthLoading(false); return; }
 
-      // If family code was valid, link to family
+      // If family code was valid, link to family using service-level function
       if(familyData && signUpData?.user) {
         const userId = signUpData.user.id;
-        // Wait briefly for profile trigger to run
-        await new Promise(r => setTimeout(r, 1000));
-        await supabase.from("profiles").update({
-          tier:        "paid",
-          family_id:   familyData.id,
-          family_role: "member",
-          name:        authForm.name || authForm.email.split("@")[0],
-        }).eq("id", userId);
-        await supabase.from("family_members").insert({
-          family_id:  familyData.id,
-          profile_id: userId,
-          role:       "member",
-        });
-        showToast(`Welcome to the ${familyData.name}! 🎉`);
+        const savedFamilyData = familyData;
+        const savedName = authForm.name || authForm.email.split("@")[0];
+
+        // Store pending family join in localStorage — will be processed after session loads
+        localStorage.setItem("pendingFamilyJoin", JSON.stringify({
+          userId,
+          familyId:   savedFamilyData.id,
+          familyName: savedFamilyData.name,
+          userName:   savedName,
+        }));
+        showToast(`Welcome to the ${savedFamilyData.name}! 🎉`);
       } else {
         showToast("Account created! Welcome to Anderson Heirloom Recipes! 🎉");
       }
