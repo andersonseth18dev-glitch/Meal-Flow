@@ -120,8 +120,18 @@ export default function App() {
   const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",categories:[],collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
 
   const [authOpen,      setAuthOpen]      = useState(false);
-  const [onboarding,    setOnboarding]    = useState(false);
-  const [onboardStep,   setOnboardStep]   = useState(0);
+  const [onboarding,       setOnboarding]       = useState(false);
+  const [onboardStep,      setOnboardStep]      = useState(0);
+  const [communityRecipes, setCommunityRecipes] = useState([]);
+  const [communityLoading, setCommunityLoading] = useState(false);
+  const [communitySort,    setCommunitySort]    = useState("newest");
+  const [shareOpen,        setShareOpen]        = useState(false);
+  const [shareRecipe,      setShareRecipe]      = useState(null);
+  const [shareDisplay,     setShareDisplay]     = useState("family");
+  const [shareLoading,     setShareLoading]     = useState(false);
+  const [addCommunityOpen, setAddCommunityOpen] = useState(false);
+  const [addCommunityRec,  setAddCommunityRec]  = useState(null);
+  const [addCommunityForm, setAddCommunityForm] = useState({name:"",collection:"None"});
   const [familyMembers,        setFamilyMembers]        = useState([]);
   const [familyMembersLoading, setFamilyMembersLoading] = useState(false);
   const [authMode,  setAuthMode]  = useState("login");
@@ -314,6 +324,158 @@ export default function App() {
   const loadCollections = async () => {
     const {data} = await supabase.from("collections").select("*").order("name");
     if(data) setAllCollections(data.map(c=>c.name));
+  };
+
+  // ── COMMUNITY RECIPES ────────────────────────────────────────────────────
+  const loadCommunityRecipes = async (sort="newest") => {
+    setCommunityLoading(true);
+    let query = supabase
+      .from("community_recipes")
+      .select(`
+        id, display_name, display_option, times_added, created_at,
+        recipes(id, name, description, time, base_servings, calories, emoji, category, photo_url, photo_thumb, ingredients, steps, tags),
+        profiles(name, email),
+        families(name)
+      `);
+
+    if(sort === "newest")    query = query.order("created_at", { ascending: false });
+    if(sort === "most_added") query = query.order("times_added", { ascending: false });
+
+    const {data, error} = await query.limit(50);
+    if(error) console.error("Community load error:", error);
+
+    let results = data || [];
+
+    // Sort by rating client-side since it requires joining ratings
+    if(sort === "top_rated") {
+      results = results.sort((a,b) => (b.avg_rating||0) - (a.avg_rating||0));
+    }
+
+    setCommunityRecipes(results);
+    setCommunityLoading(false);
+  };
+
+  // ── SHARE RECIPE TO COMMUNITY ────────────────────────────────────────────
+  const submitToCommunity = async () => {
+    if(!shareRecipe || !session) return;
+    setShareLoading(true);
+
+    // Step 1 — AI content moderation
+    try {
+      const modRes = await fetch("/.netlify/functions/moderate-recipe", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          name:        shareRecipe.name,
+          category:    shareRecipe.category,
+          ingredients: shareRecipe.ingredients,
+          steps:       shareRecipe.steps,
+        }),
+      });
+      const modData = await modRes.json();
+
+      if(!modData.approved) {
+        // Log to blocked_recipes table for admin visibility
+        await supabase.from("blocked_recipes").insert({
+          recipe_name:  shareRecipe.name,
+          category:     shareRecipe.category,
+          ingredients:  shareRecipe.ingredients,
+          steps:        shareRecipe.steps,
+          submitted_by: session.user.id,
+          reason:       modData.reason,
+        });
+        showToast("This recipe doesn't meet our community guidelines.", "error");
+        setShareLoading(false);
+        return;
+      }
+    } catch(err) {
+      console.error("Moderation check failed:", err);
+      // Continue on moderation error — report system is safety net
+    }
+
+    // Step 2 — Get display name
+    let displayName = "Anonymous";
+    if(shareDisplay === "family")     displayName = profile?.families?.name || profile?.name + " Family";
+    if(shareDisplay === "first_name") displayName = profile?.name || session.user.email.split("@")[0];
+    if(shareDisplay === "anonymous")  displayName = "Anonymous";
+
+    // Step 3 — Post to community
+    const {error} = await supabase.from("community_recipes").insert({
+      recipe_id:      shareRecipe.id,
+      family_id:      profile?.family_id,
+      shared_by:      session.user.id,
+      display_name:   displayName,
+      display_option: shareDisplay,
+    });
+
+    if(error) {
+      showToast("Could not share recipe. Please try again.", "error");
+    } else {
+      showToast(`Recipe shared to the community! 🎉`);
+      setShareOpen(false);
+      setShareRecipe(null);
+      loadCommunityRecipes(communitySort);
+    }
+    setShareLoading(false);
+  };
+
+  // ── ADD COMMUNITY RECIPE TO OWN VAULT ───────────────────────────────────
+  const addFromCommunity = async () => {
+    if(!addCommunityRec || !session) return;
+    const r = addCommunityRec.recipes;
+    const newId = "cr_" + Date.now();
+    const {error} = await supabase.from("recipes").insert({
+      id:               newId,
+      name:             addCommunityForm.name || r.name,
+      description:      r.description,
+      time:             r.time,
+      base_servings:    r.base_servings,
+      calories:         r.calories,
+      emoji:            r.emoji,
+      category:         r.category,
+      categories:       [r.category],
+      ingredients:      r.ingredients,
+      steps:            r.steps,
+      tags:             r.tags,
+      photo_url:        r.photo_url,
+      photo_thumb:      r.photo_thumb,
+      source:           "community",
+      visibility:       profile?.family_id ? "family" : "private",
+      family_id:        profile?.family_id || null,
+      imported_by:      session.user.id,
+      imported_by_name: profile?.name || session.user.email.split("@")[0],
+      collection:       addCommunityForm.collection || "None",
+      collections:      addCommunityForm.collection && addCommunityForm.collection!=="None" ? [addCommunityForm.collection] : [],
+    });
+
+    if(error) {
+      showToast("Could not add recipe. Please try again.", "error");
+    } else {
+      // Increment times_added counter
+      await supabase.from("community_recipes")
+        .update({ times_added: (addCommunityRec.times_added||0) + 1 })
+        .eq("id", addCommunityRec.id);
+      showToast(`"${addCommunityForm.name || r.name}" added to your recipes! 🍽️`);
+      setAddCommunityOpen(false);
+      setAddCommunityRec(null);
+      loadRecipes();
+    }
+  };
+
+  // ── REPORT COMMUNITY RECIPE ──────────────────────────────────────────────
+  const reportCommunityRecipe = async (communityRecipeId) => {
+    const reason = window.prompt("Please briefly describe why you are reporting this recipe:");
+    if(!reason) return;
+    await supabase.from("recipe_reports").insert({
+      community_recipe_id: communityRecipeId,
+      reported_by:         session?.user?.id,
+      reason,
+    });
+    // Increment report count
+    await supabase.from("community_recipes")
+      .update({ report_count: supabase.rpc("increment", {row_id: communityRecipeId}) })
+      .eq("id", communityRecipeId);
+    showToast("Recipe reported — thank you for keeping the community safe. 🙏");
   };
 
   // ── STRIPE CHECKOUT ───────────────────────────────────────────────────────
@@ -909,37 +1071,120 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
 
       {/* ── AI SEARCH ── */}
             {screen==="community"&&(
-        <div style={{maxWidth:800,margin:"0 auto",padding:"20px 16px"}}>
-          <div style={{background:`linear-gradient(135deg,#14362A,#1D4E35)`,borderRadius:14,padding:"24px 20px",marginBottom:20,textAlign:"center"}}>
-            <div style={{fontSize:32,marginBottom:8}}>🌍</div>
-            <div style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:6}}>Community Recipes</div>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.8)"}}>Recipes shared by families just like yours</div>
+        <div style={{maxWidth:900,margin:"0 auto",padding:"20px 16px"}}>
+          {/* Header */}
+          <div style={{background:`linear-gradient(135deg,#14362A,#1D4E35)`,borderRadius:14,padding:"20px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+            <div>
+              <div style={{fontSize:20,fontWeight:800,color:"#fff"}}>🌍 Community Recipes</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>Recipes shared by real families</div>
+            </div>
+            {isPaidTier()&&profile?.tier==="paid"&&(
+              <button style={{...btnStyle("#FFFFFF"),color:C.navy,fontSize:13,padding:"8px 16px",fontWeight:700}} onClick={()=>{setShareOpen(true);}}>
+                + Share a Recipe
+              </button>
+            )}
           </div>
-          {!isPaidTier()?(
+
+          {/* Not paid — show paywall */}
+          {!isPaidTier()&&(
             <div style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,padding:"40px 24px",textAlign:"center"}}>
               <div style={{fontSize:52,marginBottom:16}}>🔒</div>
               <div style={{fontWeight:800,fontSize:20,color:C.text,marginBottom:8}}>Family Plan Required</div>
               <div style={{fontSize:14,color:C.muted,marginBottom:24,lineHeight:1.7,maxWidth:400,margin:"0 auto 24px"}}>
-                The Community page is available to Family Plan subscribers. Browse and discover recipes shared by real families, follow your favorites, and share your own.
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:24}}>
-                {["🍽️ Browse recipes from real families","❤️ Follow families whose recipes you love","🔔 Get notified when they share something new","📤 Share your own family recipes with the community"].map(f=>(
-                  <div key={f} style={{fontSize:14,color:C.text,fontWeight:500}}>{f}</div>
-                ))}
+                Browse and discover recipes shared by real families, follow your favorites, and share your own.
               </div>
               <button style={{...btnStyle(),padding:"12px 32px",fontSize:15,fontWeight:700}} onClick={()=>setScreen("profile")}>
                 Upgrade to Family Plan →
               </button>
               {!session&&<div style={{fontSize:13,color:C.muted,marginTop:12}}>Already have an account? <span style={{color:C.accent,cursor:"pointer",fontWeight:600}} onClick={()=>setAuthOpen(true)}>Sign in</span></div>}
             </div>
-          ):(
-            <div style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,padding:"40px 24px",textAlign:"center"}}>
-              <div style={{fontSize:52,marginBottom:16}}>🚧</div>
-              <div style={{fontWeight:800,fontSize:20,color:C.text,marginBottom:8}}>Coming Soon</div>
-              <div style={{fontSize:14,color:C.muted,lineHeight:1.7}}>
-                The Community page is being built. Soon you will be able to browse recipes from other families, follow your favorites, and share your own.
-              </div>
+          )}
+
+          {/* Trial — can view but not share */}
+          {profile?.tier==="trial"&&(
+            <div style={{background:"#FEF9C3",border:"1px solid #E8D9B0",borderRadius:10,padding:"10px 16px",marginBottom:14,fontSize:13,color:"#78350F",fontWeight:500}}>
+              ✨ You can browse community recipes during your trial. Sharing requires a full Family Plan subscription.
             </div>
+          )}
+
+          {/* Sort controls */}
+          {isPaidTier()&&(
+            <>
+              <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+                {[["newest","🕐 Newest"],["most_added","🔥 Most Added"],["top_rated","⭐ Top Rated"]].map(([val,label])=>(
+                  <button key={val} onClick={()=>{setCommunitySort(val);loadCommunityRecipes(val);}}
+                    style={{padding:"7px 14px",borderRadius:20,border:`1.5px solid ${communitySort===val?C.accent:C.border}`,background:communitySort===val?"#D1FAE5":"transparent",color:communitySort===val?C.accent:C.muted,fontSize:12,cursor:"pointer",fontWeight:communitySort===val?700:400}}>
+                    {label}
+                  </button>
+                ))}
+                <button onClick={()=>loadCommunityRecipes(communitySort)} style={{padding:"7px 14px",borderRadius:20,border:`1.5px solid ${C.border}`,background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",marginLeft:"auto"}}>
+                  🔄 Refresh
+                </button>
+              </div>
+
+              {/* Load on first view */}
+              {communityRecipes.length===0&&!communityLoading&&(
+                <div style={{textAlign:"center",padding:"40px 0"}}>
+                  <div style={{fontSize:48,marginBottom:12}}>🌍</div>
+                  <div style={{fontWeight:700,fontSize:16,color:C.text,marginBottom:8}}>No community recipes yet</div>
+                  <div style={{fontSize:13,color:C.muted,marginBottom:20}}>Be the first to share a recipe with the community!</div>
+                  <button style={{...btnStyle(),padding:"10px 24px"}} onClick={()=>loadCommunityRecipes(communitySort)}>Load Recipes</button>
+                </div>
+              )}
+
+              {communityLoading&&(
+                <div style={{textAlign:"center",padding:"40px 0",color:C.muted}}>Loading community recipes...</div>
+              )}
+
+              {/* Community recipe grid */}
+              {!communityLoading&&communityRecipes.length>0&&(
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+                  {communityRecipes.map(cr=>{
+                    const r = cr.recipes;
+                    if(!r) return null;
+                    return(
+                      <div key={cr.id} style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 2px 8px rgba(20,54,42,0.07)"}}>
+                        {/* Photo */}
+                        <div style={{height:160,background:`linear-gradient(135deg,${C.navy},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:52,position:"relative"}}>
+                          {r.photo_url?(
+                            <img src={r.photo_thumb||r.photo_url} alt={r.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          ):(
+                            <span>{r.emoji||"🍽️"}</span>
+                          )}
+                          <div style={{position:"absolute",top:8,right:8,background:"rgba(0,0,0,0.5)",borderRadius:8,padding:"3px 8px",fontSize:11,color:"#fff",fontWeight:600}}>
+                            {r.category}
+                          </div>
+                        </div>
+                        {/* Info */}
+                        <div style={{padding:"12px 14px"}}>
+                          <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>{r.name}</div>
+                          <div style={{fontSize:11,color:C.muted,marginBottom:8,display:"flex",gap:10}}>
+                            <span>⏱ {r.time}</span>
+                            <span>👥 {r.base_servings} servings</span>
+                            {cr.times_added>0&&<span>➕ {cr.times_added} added</span>}
+                          </div>
+                          <div style={{fontSize:11,color:C.accent,fontWeight:600,marginBottom:10}}>
+                            Shared by {cr.display_name}
+                          </div>
+                          <div style={{display:"flex",gap:6}}>
+                            <button style={{...btnStyle(),flex:2,padding:"8px 0",fontSize:12}} onClick={()=>{
+                              setAddCommunityRec(cr);
+                              setAddCommunityForm({name:r.name,collection:"None"});
+                              setAddCommunityOpen(true);
+                            }}>
+                              + Add to My Recipes
+                            </button>
+                            <button style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:12,cursor:"pointer",color:C.muted}} onClick={()=>reportCommunityRecipe(cr.id)} title="Report this recipe">
+                              🚩
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1663,6 +1908,93 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* ── SHARE TO COMMUNITY MODAL ── */}
+      {shareOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(14,30,22,0.82)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShareOpen(false)}>
+          <div style={{background:C.card,borderRadius:18,padding:"28px 24px",width:"100%",maxWidth:440,border:`1.5px solid ${C.border}`}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:18,color:C.text,marginBottom:4}}>📤 Share to Community</div>
+            <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Choose a recipe from your vault to share with the community.</div>
+
+            {/* Recipe picker */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:6}}>Select a Recipe</div>
+              <select style={{width:"100%",padding:"10px 14px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none"}}
+                value={shareRecipe?.id||""}
+                onChange={e=>{
+                  const r = recipes.find(x=>x.id===e.target.value);
+                  setShareRecipe(r||null);
+                }}>
+                <option value="">-- Choose a recipe --</option>
+                {recipes.filter(r=>r.imported_by===session?.user?.id||r.family_id===profile?.family_id).map(r=>(
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Display name choice */}
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:8}}>Show recipe as shared by...</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {[
+                  ["family",     `🏡 ${profile?.families?.name || "My Family"}`],
+                  ["first_name", `👤 ${profile?.name || "Me"} (first name only)`],
+                  ["anonymous",  "🕵️ Anonymous"],
+                ].map(([val,label])=>(
+                  <label key={val} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,border:`1.5px solid ${shareDisplay===val?C.accent:C.border}`,background:shareDisplay===val?"#D1FAE5":"transparent",cursor:"pointer",fontSize:13,fontWeight:shareDisplay===val?700:400}}>
+                    <input type="radio" name="display" value={val} checked={shareDisplay===val} onChange={()=>setShareDisplay(val)} style={{accentColor:C.accent}}/>
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div style={{fontSize:11,color:C.muted,marginBottom:16,background:"#FEF9C3",padding:"8px 12px",borderRadius:8,border:"1px solid #E8D9B0"}}>
+              ⚠️ All recipes are reviewed before appearing on the community page. Recipes must be genuine food recipes appropriate for all ages.
+            </div>
+
+            <div style={{display:"flex",gap:8}}>
+              <button style={{...ghostBtn,flex:1}} onClick={()=>setShareOpen(false)}>Cancel</button>
+              <button style={{...btnStyle(),flex:2,opacity:(!shareRecipe||shareLoading)?0.6:1}} disabled={!shareRecipe||shareLoading} onClick={submitToCommunity}>
+                {shareLoading?"Reviewing...":"Share Recipe 🌍"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD COMMUNITY RECIPE MODAL ── */}
+      {addCommunityOpen&&addCommunityRec&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(14,30,22,0.82)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setAddCommunityOpen(false)}>
+          <div style={{background:C.card,borderRadius:18,padding:"28px 24px",width:"100%",maxWidth:400,border:`1.5px solid ${C.border}`}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:18,color:C.text,marginBottom:4}}>➕ Add to My Recipes</div>
+            <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Customize before adding to your recipe book.</div>
+
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:4}}>Recipe Name</div>
+              <input style={{width:"100%",padding:"10px 14px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}}
+                value={addCommunityForm.name}
+                onChange={e=>setAddCommunityForm(p=>({...p,name:e.target.value}))}
+              />
+            </div>
+
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:4}}>Add to Collection</div>
+              <select style={{width:"100%",padding:"10px 14px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none"}}
+                value={addCommunityForm.collection}
+                onChange={e=>setAddCommunityForm(p=>({...p,collection:e.target.value}))}>
+                <option value="None">No collection</option>
+                {allCollections.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div style={{display:"flex",gap:8}}>
+              <button style={{...ghostBtn,flex:1}} onClick={()=>setAddCommunityOpen(false)}>Cancel</button>
+              <button style={{...btnStyle(),flex:2}} onClick={addFromCommunity}>Add to My Recipes 🍽️</button>
+            </div>
           </div>
         </div>
       )}
