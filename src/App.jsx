@@ -2595,6 +2595,16 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           </div>
         </div>
       )}
+    {/* ── FOOTER ── */}
+    <div style={{borderTop:`1px solid ${C.border}`,marginTop:40,padding:"20px 24px",textAlign:"center",background:C.surface}}>
+      <div style={{fontSize:12,color:C.muted,display:"flex",gap:16,justifyContent:"center",flexWrap:"wrap"}}>
+        <span>© 2026 Anderson Heirloom Recipes · Seth Anderson</span>
+        <a href="/terms.html" style={{color:C.accent,textDecoration:"none",fontWeight:600}} target="_blank">Terms of Service</a>
+        <a href="/privacy.html" style={{color:C.accent,textDecoration:"none",fontWeight:600}} target="_blank">Privacy Policy</a>
+        <a href="mailto:andersonseth18dev@gmail.com" style={{color:C.accent,textDecoration:"none",fontWeight:600}}>Contact</a>
+      </div>
+    </div>
+
     </div>
   );
 }
