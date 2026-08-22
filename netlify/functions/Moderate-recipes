@@ -1,0 +1,55 @@
+// ── RECIPE CONTENT MODERATION ─────────────────────────────────────────────────
+// Uses Claude to verify a submission is a genuine food recipe before publishing
+const Anthropic = require("@anthropic-ai/sdk");
+
+const client = new Anthropic.Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+exports.handler = async (event) => {
+  if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method not allowed" };
+
+  try {
+    const { name, ingredients, steps, category } = JSON.parse(event.body);
+
+    const prompt = `You are a content moderator for a family recipe sharing app. Review this recipe submission and determine if it is a genuine, safe food recipe appropriate for all ages.
+
+Recipe Name: ${name}
+Category: ${category}
+Ingredients: ${JSON.stringify(ingredients)}
+Steps: ${JSON.stringify(steps)}
+
+Respond with ONLY a JSON object in this exact format:
+{
+  "approved": true or false,
+  "reason": "brief internal reason for logging only — never shown to user"
+}
+
+Approve if: it is a genuine food/drink recipe with real culinary ingredients and cooking steps.
+Reject if: ingredients or steps contain anything dangerous, illegal, inappropriate for families, non-food related, or if the recipe appears to be disguising harmful instructions as a food recipe.`;
+
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 200,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content[0].text.trim();
+    const clean = text.replace(/```json|```/g, "").trim();
+    const result = JSON.parse(clean);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        approved: result.approved,
+        reason:   result.reason,
+      }),
+    };
+  } catch (err) {
+    console.error("Moderation error:", err);
+    // Default to approved on API error so a Claude outage doesn't block all submissions
+    // The report system acts as a safety net
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ approved: true, reason: "Moderation API error — defaulted to approved" }),
+    };
+  }
+};
