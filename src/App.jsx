@@ -129,9 +129,15 @@ export default function App() {
   const [shareRecipe,      setShareRecipe]      = useState(null);
   const [shareDisplay,     setShareDisplay]     = useState("family");
   const [shareLoading,     setShareLoading]     = useState(false);
-  const [addCommunityOpen, setAddCommunityOpen] = useState(false);
-  const [addCommunityRec,  setAddCommunityRec]  = useState(null);
-  const [addCommunityForm, setAddCommunityForm] = useState({name:"",collection:"None"});
+  const [addCommunityOpen,  setAddCommunityOpen]  = useState(false);
+  const [addCommunityRec,   setAddCommunityRec]   = useState(null);
+  const [addCommunityForm,  setAddCommunityForm]  = useState({name:"",collection:"None"});
+  const [notifications,     setNotifications]     = useState([]);
+  const [notifOpen,         setNotifOpen]         = useState(false);
+  const [followedFamilies,  setFollowedFamilies]  = useState([]);
+  const [familyProfile,     setFamilyProfile]     = useState(null);
+  const [familyProfileOpen, setFamilyProfileOpen] = useState(false);
+  const [familyRecipes,     setFamilyRecipes]     = useState([]);
   const [familyMembers,        setFamilyMembers]        = useState([]);
   const [familyMembersLoading, setFamilyMembersLoading] = useState(false);
   const [authMode,  setAuthMode]  = useState("login");
@@ -202,6 +208,12 @@ export default function App() {
     if(data) {
       console.log("Profile loaded:", data.tier, data.family_id);
       setProfile(data);
+      // Load notifications
+      supabase.from("notifications").select("*").eq("profile_id",userId).order("created_at",{ascending:false}).limit(20).then(({data:notifs})=>{ if(notifs) setNotifications(notifs); });
+      // Load follows
+      if(data.family_id) {
+        supabase.from("community_follows").select("following_family_id").eq("follower_family_id",data.family_id).then(({data:follows})=>{ if(follows) setFollowedFamilies(follows.map(f=>f.following_family_id)); });
+      }
       // Load family members if owner
       if(data.family_id && data.family_role === "owner") {
         setFamilyMembersLoading(true);
@@ -280,6 +292,18 @@ export default function App() {
         showToast(`Welcome to the ${savedFamilyData.name}! 🎉`);
       } else {
         showToast("Account created! Welcome to Anderson Heirloom Recipes! 🎉");
+        // Send welcome notification
+        if(signUpData?.user) {
+          setTimeout(async()=>{
+            await supabase.from("notifications").insert({
+              profile_id: signUpData.user.id,
+              type:  "welcome",
+              title: "Welcome to Anderson Heirloom Recipes! 🏡",
+              body:  "Start by browsing our 275 recipes, planning your weekly meals, and discovering recipes shared by other families.",
+              link:  "/home",
+            });
+          }, 2000);
+        }
         // Trigger onboarding for brand new accounts
         setTimeout(()=>{ setOnboarding(true); setOnboardStep(0); }, 400);
       }
@@ -412,6 +436,14 @@ export default function App() {
       showToast("Could not share recipe. Please try again.", "error");
     } else {
       showToast(`Recipe shared to the community! 🎉`);
+      // Check if this is their first share
+      const {count:shareCount} = await supabase
+        .from("community_recipes")
+        .select("*", {count:"exact",head:true})
+        .eq("shared_by", session.user.id);
+      if(shareCount === 1) {
+        await sendNotification(session.user.id, "milestone", "You shared your first recipe! 🎉", "Your recipe is now live on the community page for other families to discover and add to their vaults.", "/community");
+      }
       setShareOpen(false);
       setShareRecipe(null);
       loadCommunityRecipes(communitySort);
@@ -476,6 +508,119 @@ export default function App() {
       .update({ report_count: supabase.rpc("increment", {row_id: communityRecipeId}) })
       .eq("id", communityRecipeId);
     showToast("Recipe reported — thank you for keeping the community safe. 🙏");
+  };
+
+  // ── NOTIFICATIONS ────────────────────────────────────────────────────────
+  const loadNotifications = async () => {
+    if(!session) return;
+    const {data} = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("profile_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if(data) setNotifications(data);
+  };
+
+  const markAllRead = async () => {
+    if(!session) return;
+    await supabase.from("notifications")
+      .update({ read: true })
+      .eq("profile_id", session.user.id)
+      .eq("read", false);
+    setNotifications(prev => prev.map(n => ({...n, read: true})));
+  };
+
+  const sendNotification = async (profileId, type, title, body, link="") => {
+    await supabase.from("notifications").insert({ profile_id:profileId, type, title, body, link });
+  };
+
+  const unreadCount = notifications.filter(n=>!n.read).length;
+
+  // ── FOLLOW SYSTEM ─────────────────────────────────────────────────────────
+  const loadFollows = async () => {
+    if(!session || !profile?.family_id) return;
+    const {data} = await supabase
+      .from("community_follows")
+      .select("following_family_id")
+      .eq("follower_family_id", profile.family_id);
+    if(data) setFollowedFamilies(data.map(f=>f.following_family_id));
+  };
+
+  const toggleFollow = async (targetFamilyId, targetFamilyName) => {
+    if(!session || !profile?.family_id) { setAuthOpen(true); return; }
+    if(!isPaidTier()) { showToast("Following families requires a Family Plan.","error"); return; }
+
+    const isFollowing = followedFamilies.includes(targetFamilyId);
+
+    if(isFollowing) {
+      await supabase.from("community_follows")
+        .delete()
+        .eq("follower_family_id", profile.family_id)
+        .eq("following_family_id", targetFamilyId);
+      setFollowedFamilies(prev => prev.filter(id => id !== targetFamilyId));
+      showToast(`Unfollowed ${targetFamilyName}`);
+    } else {
+      await supabase.from("community_follows")
+        .insert({ follower_family_id: profile.family_id, following_family_id: targetFamilyId });
+      setFollowedFamilies(prev => [...prev, targetFamilyId]);
+      showToast(`Now following ${targetFamilyName}! 🎉`);
+
+      // Notify the followed family's owner
+      const {data:targetFamily} = await supabase
+        .from("families")
+        .select("owner_id, name")
+        .eq("id", targetFamilyId)
+        .single();
+      if(targetFamily) {
+        await sendNotification(
+          targetFamily.owner_id,
+          "new_follower",
+          "You have a new follower! 🎉",
+          `${profile?.families?.name || "A family"} is now following your recipes.`,
+          "/community"
+        );
+
+        // Follower milestone notifications
+        const {count} = await supabase
+          .from("community_follows")
+          .select("*", {count:"exact",head:true})
+          .eq("following_family_id", targetFamilyId);
+        if([5,10,25,50].includes(count)) {
+          await sendNotification(
+            targetFamily.owner_id,
+            "milestone",
+            `🏆 ${count} families are following you!`,
+            `Your recipes are popular! ${count} families are now following ${targetFamily.name}.`,
+            "/community"
+          );
+        }
+      }
+    }
+  };
+
+  // ── FAMILY PROFILE PAGE ───────────────────────────────────────────────────
+  const openFamilyProfile = async (familyId, familyName) => {
+    const {data:recipes} = await supabase
+      .from("community_recipes")
+      .select("*, recipes(id,name,description,time,base_servings,emoji,category,photo_url,photo_thumb,tags)")
+      .eq("family_id", familyId)
+      .order("created_at", { ascending: false });
+
+    const {data:family} = await supabase
+      .from("families")
+      .select("id, name, created_at")
+      .eq("id", familyId)
+      .single();
+
+    const {count:followerCount} = await supabase
+      .from("community_follows")
+      .select("*", {count:"exact",head:true})
+      .eq("following_family_id", familyId);
+
+    setFamilyProfile({...family, followerCount: followerCount||0});
+    setFamilyRecipes(recipes||[]);
+    setFamilyProfileOpen(true);
   };
 
   // ── STRIPE CHECKOUT ───────────────────────────────────────────────────────
@@ -935,6 +1080,17 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           <div style={{fontSize:15,fontWeight:900,color:"#E8F5EE",letterSpacing:"-0.3px"}}>🏡 Anderson Heirloom Recipes</div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {session?(<>
+              {/* Notification bell */}
+              <div style={{position:"relative"}}>
+                <button onClick={()=>setNotifOpen(o=>!o)} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:20,color:"rgba(255,255,255,0.8)",position:"relative",padding:"4px"}}>
+                  🔔
+                  {unreadCount>0&&(
+                    <span style={{position:"absolute",top:0,right:0,background:C.red,color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {unreadCount>9?"9+":unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
               <div style={{background:C.accent,borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#fff"}}>
                 {profile?.name?profile.name[0].toUpperCase():session.user.email[0].toUpperCase()}
               </div>
@@ -1166,7 +1322,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                           <div style={{fontSize:11,color:C.accent,fontWeight:600,marginBottom:10}}>
                             Shared by {cr.display_name}
                           </div>
-                          <div style={{display:"flex",gap:6}}>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                             <button style={{...btnStyle(),flex:2,padding:"8px 0",fontSize:12}} onClick={()=>{
                               setAddCommunityRec(cr);
                               setAddCommunityForm({name:r.name,collection:"None"});
@@ -1178,6 +1334,20 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                               🚩
                             </button>
                           </div>
+                          {cr.family_id&&(
+                            <div style={{display:"flex",gap:6,marginTop:6}}>
+                              <button style={{flex:1,padding:"6px 0",borderRadius:8,border:`1.5px solid ${C.border}`,background:"transparent",fontSize:11,cursor:"pointer",fontWeight:600,color:followedFamilies.includes(cr.family_id)?C.accent:C.muted}}
+                                onClick={()=>toggleFollow(cr.family_id, cr.display_name)}>
+                                {followedFamilies.includes(cr.family_id)?"✓ Following":"+ Follow Family"}
+                              </button>
+                              {familyRecipes.length>=5||(
+                                <button style={{flex:1,padding:"6px 0",borderRadius:8,border:`1.5px solid ${C.border}`,background:"transparent",fontSize:11,cursor:"pointer",fontWeight:600,color:C.muted}}
+                                  onClick={()=>openFamilyProfile(cr.family_id, cr.display_name)}>
+                                  View Profile
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1908,6 +2078,93 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* ── NOTIFICATION DROPDOWN ── */}
+      {notifOpen&&(
+        <div style={{position:"fixed",inset:0,zIndex:250}} onClick={()=>setNotifOpen(false)}>
+          <div style={{position:"absolute",top:56,right:16,background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,width:340,maxHeight:480,overflowY:"auto",boxShadow:"0 8px 40px rgba(14,30,22,0.18)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontWeight:800,fontSize:15,color:C.text}}>🔔 Notifications</div>
+              {unreadCount>0&&(
+                <button style={{background:"none",border:"none",color:C.accent,fontSize:12,cursor:"pointer",fontWeight:600}} onClick={markAllRead}>
+                  Mark all read
+                </button>
+              )}
+            </div>
+            {notifications.length===0?(
+              <div style={{padding:"32px 16px",textAlign:"center",color:C.muted,fontSize:13}}>
+                No notifications yet — start exploring the community!
+              </div>
+            ):(
+              notifications.map(n=>(
+                <div key={n.id} style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,background:n.read?"transparent":"#F0F7F3",cursor:n.link?"pointer":"default"}}
+                  onClick={()=>{
+                    if(!n.read) supabase.from("notifications").update({read:true}).eq("id",n.id);
+                    setNotifications(prev=>prev.map(x=>x.id===n.id?{...x,read:true}:x));
+                    if(n.link) { setNotifOpen(false); setScreen(n.link.replace("/","")||"home"); }
+                  }}>
+                  <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:2}}>{n.title}</div>
+                  <div style={{fontSize:12,color:C.muted,lineHeight:1.5}}>{n.body}</div>
+                  <div style={{fontSize:10,color:C.muted,marginTop:4}}>{new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── FAMILY PROFILE MODAL ── */}
+      {familyProfileOpen&&familyProfile&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(14,30,22,0.82)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setFamilyProfileOpen(false)}>
+          <div style={{background:C.card,borderRadius:18,width:"100%",maxWidth:560,maxHeight:"85vh",overflowY:"auto",border:`1.5px solid ${C.border}`}} onClick={e=>e.stopPropagation()}>
+            {/* Family header */}
+            <div style={{background:`linear-gradient(135deg,${C.navy},${C.accent})`,padding:"24px 20px",borderRadius:"16px 16px 0 0",textAlign:"center"}}>
+              <div style={{width:60,height:60,borderRadius:"50%",background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,fontWeight:700,color:"#fff",margin:"0 auto 10px"}}>
+                🏡
+              </div>
+              <div style={{fontWeight:800,fontSize:20,color:"#fff",marginBottom:4}}>{familyProfile.name}</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.75)",marginBottom:12}}>
+                {familyProfile.followerCount} follower{familyProfile.followerCount!==1?"s":""} · {familyRecipes.length} recipe{familyRecipes.length!==1?"s":""} shared
+              </div>
+              <button style={{padding:"8px 20px",borderRadius:20,border:"2px solid #fff",background:followedFamilies.includes(familyProfile.id)?"#fff":"transparent",color:followedFamilies.includes(familyProfile.id)?C.navy:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}
+                onClick={()=>toggleFollow(familyProfile.id, familyProfile.name)}>
+                {followedFamilies.includes(familyProfile.id)?"✓ Following":"+ Follow"}
+              </button>
+            </div>
+            {/* Their recipes */}
+            <div style={{padding:"16px"}}>
+              <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:12}}>Shared Recipes</div>
+              {familyRecipes.length===0?(
+                <div style={{textAlign:"center",padding:"24px 0",color:C.muted,fontSize:13}}>This family hasn't shared any recipes yet.</div>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {familyRecipes.map(cr=>{
+                    const r = cr.recipes;
+                    if(!r) return null;
+                    return(
+                      <div key={cr.id} style={{display:"flex",gap:12,alignItems:"center",padding:"10px 12px",background:"#F0F7F3",borderRadius:10,border:`1px solid #C5DDD3`}}>
+                        <div style={{width:44,height:44,borderRadius:8,background:`linear-gradient(135deg,${C.navy},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                          {r.photo_url?<img src={r.photo_thumb||r.photo_url} alt={r.name} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:8}}/>:r.emoji||"🍽️"}
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:13,color:C.text}}>{r.name}</div>
+                          <div style={{fontSize:11,color:C.muted}}>{r.category} · {r.time}</div>
+                        </div>
+                        <button style={{...btnStyle(),fontSize:11,padding:"6px 12px",flexShrink:0}} onClick={()=>{
+                          setAddCommunityRec(cr);
+                          setAddCommunityForm({name:r.name,collection:"None"});
+                          setAddCommunityOpen(true);
+                          setFamilyProfileOpen(false);
+                        }}>Add</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
