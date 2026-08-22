@@ -101,6 +101,8 @@ export default function App() {
 
   const [activeCollection,setActiveCollection]= useState("All");
   const [sidebarOpen,     setSidebarOpen]     = useState(true);
+  const [mobileFilterOpen,setMobileFilterOpen]= useState(false);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const [tourStep,        setTourStep]        = useState(0);
   const [aiQuery,         setAiQuery]         = useState("");
   const [aiLoading,       setAiLoading]       = useState(false);
@@ -1201,8 +1203,21 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
       {screen==="home"&&(
         <div style={{display:"flex",minHeight:"calc(100vh - 90px)"}}>
 
-          {/* ── SIDEBAR ── */}
-          {sidebarOpen&&(<div style={{width:220,flexShrink:0,background:"#F0F7F3",borderRight:`1px solid #C5DDD3`,position:"sticky",top:90,height:"calc(100vh - 90px)",overflowY:"auto",display:"flex",flexDirection:"column"}}>
+          {/* ── MOBILE FILTER DRAWER ── */}
+          {mobileFilterOpen&&isMobile&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(14,30,22,0.7)",zIndex:200}} onClick={()=>setMobileFilterOpen(false)}>
+              <div style={{position:"absolute",left:0,top:0,bottom:0,width:"85%",maxWidth:300,background:C.surface,overflowY:"auto",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+                <div style={{background:C.navy,padding:"16px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontSize:14,color:"#E8F5EE",fontWeight:700}}>Filter Recipes</div>
+                  <button onClick={()=>setMobileFilterOpen(false)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.7)",fontSize:20,cursor:"pointer"}}>✕</button>
+                </div>
+                <div style={{padding:"14px 12px",flex:1}}>SIDEBAR_CONTENT_PLACEHOLDER</div>
+              </div>
+            </div>
+          )}
+
+          {/* ── SIDEBAR (desktop only) ── */}
+          {sidebarOpen&&!isMobile&&(<div style={{width:220,flexShrink:0,background:"#F0F7F3",borderRight:`1px solid #C5DDD3`,position:"sticky",top:90,height:"calc(100vh - 90px)",overflowY:"auto",display:"flex",flexDirection:"column"}}>
 
             {/* Sidebar header */}
             <div style={{background:C.navy,padding:"16px 14px 12px"}}>
@@ -1275,9 +1290,17 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
             {/* Content header bar */}
             <div style={{padding:"14px 18px 10px",borderBottom:`1px solid ${C.border}`,background:C.card,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {/* Mobile: show filter button. Desktop: show sidebar toggle */}
+                {isMobile?(
+                  <button onClick={()=>setMobileFilterOpen(true)} style={{background:C.accent,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:"#fff",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
+                    ⚙️ Filter
+                    {(activeDiet!=="All"||activeCategory!=="All"||activeCollection!=="All")&&<span style={{background:"#fff",color:C.accent,borderRadius:"50%",width:16,height:16,fontSize:10,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}}>!</span>}
+                  </button>
+                ):(
                 <button onClick={()=>setSidebarOpen(p=>!p)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"5px 8px",cursor:"pointer",color:C.muted,fontSize:14,display:"flex",alignItems:"center"}} title={sidebarOpen?"Hide sidebar":"Show sidebar"}>
                   {sidebarOpen?"◀":"▶"}
                 </button>
+                )}
                 <div>
                   <div style={{fontWeight:700,fontSize:16,color:C.text}}>
                     {activeCategory!=="All"?`${CAT_EMOJI[activeCategory]} ${activeCategory}`:activeCollection!=="All"?`📚 ${activeCollection}`:activeDiet!=="All"?`${activeDiet} Recipes`:"All Recipes"}
@@ -1298,7 +1321,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
 
             {/* Recipe grid */}
             <div style={{padding:"16px",flex:1,background:C.bg}}>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(auto-fill,minmax(240px,1fr))",gap:isMobile?10:14}}>
                 {filtered.map(r=><RecipeCard key={r.id} r={r}/>)}
                 {!loading&&filtered.length===0&&(
                   <div style={{gridColumn:"1/-1",textAlign:"center",padding:"80px 0",color:C.muted}}>
@@ -1384,14 +1407,14 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
 
               {/* Community recipe grid */}
               {!communityLoading&&communityRecipes.length>0&&(
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+                <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(auto-fill,minmax(280px,1fr))",gap:isMobile?10:14}}>
                   {communityRecipes.map(cr=>{
                     const r = cr.recipes;
                     if(!r) return null;
                     return(
                       <div key={cr.id} style={{background:C.card,borderRadius:14,border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 2px 8px rgba(20,54,42,0.07)"}}>
                         {/* Photo */}
-                        <div style={{height:160,background:`linear-gradient(135deg,${C.navy},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:52,position:"relative"}}>
+                        <div style={{height:isMobile?110:160,background:`linear-gradient(135deg,${C.navy},${C.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:isMobile?32:52,position:"relative"}}>
                           {r.photo_url?(
                             <img src={r.photo_thumb||r.photo_url} alt={r.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                           ):(
@@ -1402,7 +1425,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                           </div>
                         </div>
                         {/* Info */}
-                        <div style={{padding:"12px 14px"}}>
+                        <div style={{padding:isMobile?"8px 10px":"12px 14px"}}>
                           <div style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:4}}>{r.name}</div>
                           <div style={{fontSize:11,color:C.muted,marginBottom:8,display:"flex",gap:10}}>
                             <span>⏱ {r.time}</span>
@@ -2531,7 +2554,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
       {/* ── ADD COMMUNITY RECIPE MODAL ── */}
       {addCommunityOpen&&addCommunityRec&&(
         <div style={{position:"fixed",inset:0,background:"rgba(14,30,22,0.82)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setAddCommunityOpen(false)}>
-          <div style={{background:C.card,borderRadius:18,padding:"28px 24px",width:"100%",maxWidth:400,border:`1.5px solid ${C.border}`}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:C.card,borderRadius:isMobile?0:18,padding:isMobile?"20px 16px":"28px 24px",width:"100%",maxWidth:isMobile?"100%":400,maxHeight:isMobile?"90vh":"auto",overflowY:"auto",border:`1.5px solid ${C.border}`,marginTop:isMobile?"auto":"0"}} onClick={e=>e.stopPropagation()}>
             <div style={{fontWeight:800,fontSize:18,color:C.text,marginBottom:4}}>➕ Add to My Recipes</div>
             <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Customize before adding to your recipe book.</div>
 
