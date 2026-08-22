@@ -138,6 +138,12 @@ export default function App() {
   const [familyProfile,     setFamilyProfile]     = useState(null);
   const [familyProfileOpen, setFamilyProfileOpen] = useState(false);
   const [familyRecipes,     setFamilyRecipes]     = useState([]);
+  const [adminData,         setAdminData]         = useState(null);
+  const [adminLoading,      setAdminLoading]      = useState(false);
+  const [adminTab,          setAdminTab]          = useState("overview");
+
+  const ADMIN_USER_ID = "ff72e6cc-68e1-4601-99d9-e96dca105035";
+  const isAdmin = ()=> session?.user?.id === ADMIN_USER_ID;
   const [familyMembers,        setFamilyMembers]        = useState([]);
   const [familyMembersLoading, setFamilyMembersLoading] = useState(false);
   const [authMode,  setAuthMode]  = useState("login");
@@ -623,6 +629,90 @@ export default function App() {
     setFamilyProfileOpen(true);
   };
 
+  // ── ADMIN PANEL ──────────────────────────────────────────────────────────
+  const loadAdminData = async () => {
+    if(!isAdmin()) return;
+    setAdminLoading(true);
+    try {
+      // Load all profiles with tier info
+      const {data:users} = await supabase
+        .from("profiles")
+        .select("id, name, email, tier, family_role, created_at")
+        .order("created_at", { ascending: false });
+
+      // Load subscriptions
+      const {data:subs} = await supabase
+        .from("subscriptions")
+        .select("*, profiles(name, email)")
+        .order("created_at", { ascending: false });
+
+      // Load community recipes
+      const {data:community} = await supabase
+        .from("community_recipes")
+        .select("*, recipes(name, category, emoji), profiles(name, email)")
+        .order("created_at", { ascending: false });
+
+      // Load reported recipes
+      const {data:reports} = await supabase
+        .from("recipe_reports")
+        .select("*, community_recipes(*, recipes(name, category)), profiles(name, email)")
+        .eq("resolved", false)
+        .order("created_at", { ascending: false });
+
+      // Load blocked recipes
+      const {data:blocked} = await supabase
+        .from("blocked_recipes")
+        .select("*, profiles(name, email)")
+        .order("created_at", { ascending: false });
+
+      // Calculate stats
+      const totalUsers    = users?.length || 0;
+      const paidUsers     = users?.filter(u=>u.tier==="paid").length || 0;
+      const trialUsers    = users?.filter(u=>u.tier==="trial").length || 0;
+      const freeUsers     = users?.filter(u=>u.tier==="free").length || 0;
+      const ownerCount    = users?.filter(u=>u.family_role==="owner"&&u.tier==="paid").length || 0;
+      const memberCount   = users?.filter(u=>u.family_role==="member"&&u.tier==="paid").length || 0;
+      const estMonthly    = (ownerCount * 15) + (memberCount * 5);
+      const estAnnual     = estMonthly * 12;
+
+      setAdminData({
+        users:      users || [],
+        subs:       subs  || [],
+        community:  community || [],
+        reports:    reports   || [],
+        blocked:    blocked   || [],
+        stats: { totalUsers, paidUsers, trialUsers, freeUsers, ownerCount, memberCount, estMonthly, estAnnual }
+      });
+    } catch(err) {
+      console.error("Admin load error:", err);
+    }
+    setAdminLoading(false);
+  };
+
+  const removeFromCommunity = async (communityId, recipeName) => {
+    if(!window.confirm(`Remove "${recipeName}" from the community page?`)) return;
+    await supabase.from("community_recipes").delete().eq("id", communityId);
+    setAdminData(prev=>({...prev, community: prev.community.filter(r=>r.id!==communityId)}));
+    showToast("Recipe removed from community.");
+  };
+
+  const featureCommunityRecipe = async (communityId, currentFeatured) => {
+    await supabase.from("community_recipes").update({featured:!currentFeatured}).eq("id",communityId);
+    setAdminData(prev=>({...prev, community: prev.community.map(r=>r.id===communityId?{...r,featured:!currentFeatured}:r)}));
+    showToast(currentFeatured?"Recipe unfeatured.":"Recipe featured! ⭐");
+  };
+
+  const resolveReport = async (reportId, communityId, recipeName, removeIt) => {
+    if(removeIt && !window.confirm(`Remove "${recipeName}" from community and resolve report?`)) return;
+    if(removeIt) {
+      await supabase.from("community_recipes").delete().eq("id", communityId);
+      setAdminData(prev=>({...prev, community: prev.community.filter(r=>r.id!==communityId)}));
+    }
+    await supabase.from("recipe_reports").update({resolved:true}).eq("id",reportId);
+    setAdminData(prev=>({...prev, reports: prev.reports.filter(r=>r.id!==reportId)}));
+    showToast(removeIt?"Recipe removed and report resolved.":"Report resolved.");
+  };
+
   // ── STRIPE CHECKOUT ───────────────────────────────────────────────────────
   const startCheckout = async (priceKey) => {
     if(!session) { setAuthOpen(true); return; }
@@ -1099,7 +1189,7 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           </div>
         </div>
         <div style={{display:"flex",gap:4,marginTop:12,overflowX:"auto",scrollbarWidth:"none"}}>
-          {[["home","🍽️ Recipes"],["community","🌍 Community"],["planner","📅 Plan"],["grocery","🛒 Groceries"],["profile","👤 Profile"],["tour","❓ Guide"]].map(([id,label])=>(
+          {[["home","🍽️ Recipes"],["community","🌍 Community"],["planner","📅 Plan"],["grocery","🛒 Groceries"],["profile","👤 Profile"],["tour","❓ Guide"],...(isAdmin()?[["admin","🔧 Admin"]]:[]) ].map(([id,label])=>(
             <button key={id} style={{padding:"7px 14px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s",background:screen===id?"rgba(255,255,255,0.2)":"transparent",color:"#FFFFFF",opacity:screen===id?1:0.72,whiteSpace:"nowrap",border:screen===id?"1px solid rgba(255,255,255,0.25)":"1px solid transparent"}} onClick={()=>setScreen(id)}>
               {label}{id==="planner"&&plannedCount>0?<span style={{marginLeft:5,background:"rgba(255,255,255,0.3)",borderRadius:10,padding:"1px 6px",fontSize:10,color:"#fff"}}>{plannedCount}</span>:null}
             </button>
@@ -1584,7 +1674,222 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
         </div>
       )}
 
-            {screen==="tour"&&(()=>{
+            {screen==="admin"&&(
+        <div style={{maxWidth:1000,margin:"0 auto",padding:"20px 16px"}}>
+          {!isAdmin()?(
+            <div style={{textAlign:"center",padding:"60px 0",color:C.muted}}>Access denied.</div>
+          ):(
+            <>
+              {/* Admin Header */}
+              <div style={{background:`linear-gradient(135deg,#14362A,#1D4E35)`,borderRadius:14,padding:"20px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                <div>
+                  <div style={{fontSize:20,fontWeight:800,color:"#fff"}}>🔧 Admin Panel</div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",marginTop:2}}>Anderson Heirloom Recipes — Owner Dashboard</div>
+                </div>
+                <button style={{...btnStyle("#FFFFFF"),color:C.navy,fontSize:13,padding:"8px 16px",fontWeight:700}} onClick={loadAdminData}>
+                  {adminLoading?"Loading...":"🔄 Refresh Data"}
+                </button>
+              </div>
+
+              {/* Load prompt */}
+              {!adminData&&!adminLoading&&(
+                <div style={{textAlign:"center",padding:"40px 0"}}>
+                  <div style={{fontSize:48,marginBottom:12}}>📊</div>
+                  <div style={{fontWeight:700,fontSize:16,color:C.text,marginBottom:16}}>Click Refresh Data to load your dashboard</div>
+                  <button style={{...btnStyle(),padding:"12px 28px"}} onClick={loadAdminData}>Load Dashboard</button>
+                </div>
+              )}
+
+              {adminLoading&&(
+                <div style={{textAlign:"center",padding:"40px 0",color:C.muted}}>Loading admin data...</div>
+              )}
+
+              {adminData&&(
+                <>
+                  {/* Admin tabs */}
+                  <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+                    {[
+                      ["overview", "📊 Overview"],
+                      ["community","🌍 Community"],
+                      ["reports",  `🚩 Reports ${adminData.reports.length>0?`(${adminData.reports.length})`:""}` ],
+                      ["blocked",  `🚫 Blocked ${adminData.blocked.length>0?`(${adminData.blocked.length})`:""}` ],
+                      ["users",    "👥 Users"],
+                    ].map(([val,label])=>(
+                      <button key={val} onClick={()=>setAdminTab(val)}
+                        style={{padding:"8px 16px",borderRadius:20,border:`1.5px solid ${adminTab===val?C.accent:C.border}`,background:adminTab===val?"#D1FAE5":"transparent",color:adminTab===val?C.accent:C.muted,fontSize:13,cursor:"pointer",fontWeight:adminTab===val?700:400}}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ── OVERVIEW TAB ── */}
+                  {adminTab==="overview"&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                      {/* Stats grid */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
+                        {[
+                          {label:"Total Users",    value:adminData.stats.totalUsers,  color:C.accent,  icon:"👥"},
+                          {label:"Paid Subscribers",value:adminData.stats.paidUsers,  color:C.green,   icon:"✅"},
+                          {label:"Free Trial",      value:adminData.stats.trialUsers, color:C.gold,    icon:"✨"},
+                          {label:"Free Accounts",   value:adminData.stats.freeUsers,  color:C.muted,   icon:"🆓"},
+                          {label:"Family Owners",   value:adminData.stats.ownerCount, color:C.navy,    icon:"🏡"},
+                          {label:"Family Members",  value:adminData.stats.memberCount,color:C.accent2, icon:"👨‍👩‍👧‍👦"},
+                        ].map(s=>(
+                          <div key={s.label} style={{background:C.card,borderRadius:12,border:`1.5px solid ${C.border}`,padding:"16px",textAlign:"center"}}>
+                            <div style={{fontSize:24,marginBottom:4}}>{s.icon}</div>
+                            <div style={{fontSize:28,fontWeight:900,color:s.color}}>{s.value}</div>
+                            <div style={{fontSize:11,color:C.muted,marginTop:2}}>{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Revenue estimate */}
+                      <div style={{background:C.card,borderRadius:12,border:`1.5px solid ${C.border}`,padding:"20px"}}>
+                        <div style={{fontWeight:800,fontSize:16,color:C.text,marginBottom:16}}>💰 Revenue Estimate</div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                          <div style={{background:"#F0F7F3",borderRadius:10,padding:"16px",textAlign:"center",border:`1px solid #C5DDD3`}}>
+                            <div style={{fontSize:11,color:C.muted,marginBottom:4,fontWeight:600}}>EST. MONTHLY REVENUE</div>
+                            <div style={{fontSize:32,fontWeight:900,color:C.green}}>${adminData.stats.estMonthly.toFixed(2)}</div>
+                            <div style={{fontSize:11,color:C.muted,marginTop:4}}>{adminData.stats.ownerCount} owners × $15 + {adminData.stats.memberCount} members × $5</div>
+                          </div>
+                          <div style={{background:"#F0F7F3",borderRadius:10,padding:"16px",textAlign:"center",border:`1px solid #C5DDD3`}}>
+                            <div style={{fontSize:11,color:C.muted,marginBottom:4,fontWeight:600}}>EST. ANNUAL REVENUE</div>
+                            <div style={{fontSize:32,fontWeight:900,color:C.accent}}>${adminData.stats.estAnnual.toFixed(2)}</div>
+                            <div style={{fontSize:11,color:C.muted,marginTop:4}}>Based on current paid subscribers</div>
+                          </div>
+                        </div>
+                        <div style={{fontSize:11,color:C.muted,marginTop:12,textAlign:"center"}}>* Estimate only. Does not account for annual plan discounts, failed payments, or mid-cycle cancellations. Check Stripe for exact figures.</div>
+                      </div>
+
+                      {/* Community stats */}
+                      <div style={{background:C.card,borderRadius:12,border:`1.5px solid ${C.border}`,padding:"20px"}}>
+                        <div style={{fontWeight:800,fontSize:16,color:C.text,marginBottom:12}}>🌍 Community Activity</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                          {[
+                            {label:"Recipes Shared",  value:adminData.community.length},
+                            {label:"Pending Reports",  value:adminData.reports.length},
+                            {label:"Blocked by AI",    value:adminData.blocked.length},
+                          ].map(s=>(
+                            <div key={s.label} style={{background:"#F0F7F3",borderRadius:10,padding:"12px",textAlign:"center",border:`1px solid #C5DDD3`}}>
+                              <div style={{fontSize:22,fontWeight:900,color:C.accent}}>{s.value}</div>
+                              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{s.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── COMMUNITY TAB ── */}
+                  {adminTab==="community"&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{fontSize:13,color:C.muted,marginBottom:4}}>{adminData.community.length} recipes shared to the community page</div>
+                      {adminData.community.length===0&&(
+                        <div style={{textAlign:"center",padding:"32px 0",color:C.muted,fontSize:13}}>No community recipes yet.</div>
+                      )}
+                      {adminData.community.map(cr=>(
+                        <div key={cr.id} style={{background:C.card,borderRadius:12,border:`1.5px solid ${C.border}`,padding:"14px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                          <div style={{fontSize:24}}>{cr.recipes?.emoji||"🍽️"}</div>
+                          <div style={{flex:1,minWidth:160}}>
+                            <div style={{fontWeight:700,fontSize:13,color:C.text}}>{cr.recipes?.name||"Unknown"}</div>
+                            <div style={{fontSize:11,color:C.muted}}>{cr.recipes?.category} · Shared by {cr.display_name} · {new Date(cr.created_at).toLocaleDateString()}</div>
+                            <div style={{fontSize:11,color:C.muted}}>Added {cr.times_added||0} times · Reports: {cr.report_count||0}</div>
+                          </div>
+                          {cr.featured&&<span style={{fontSize:11,background:"#FEF9C3",color:"#78350F",padding:"3px 8px",borderRadius:6,fontWeight:700}}>⭐ Featured</span>}
+                          <div style={{display:"flex",gap:6}}>
+                            <button style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",fontSize:11,cursor:"pointer",fontWeight:600,color:cr.featured?C.muted:C.gold}}
+                              onClick={()=>featureCommunityRecipe(cr.id,cr.featured)}>
+                              {cr.featured?"Unfeature":"⭐ Feature"}
+                            </button>
+                            <button style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${C.red}`,background:"transparent",fontSize:11,cursor:"pointer",fontWeight:600,color:C.red}}
+                              onClick={()=>removeFromCommunity(cr.id, cr.recipes?.name)}>
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── REPORTS TAB ── */}
+                  {adminTab==="reports"&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{fontSize:13,color:C.muted,marginBottom:4}}>{adminData.reports.length} unresolved reports</div>
+                      {adminData.reports.length===0&&(
+                        <div style={{textAlign:"center",padding:"32px 0",color:C.green,fontSize:14,fontWeight:600}}>✅ No pending reports — community is clean!</div>
+                      )}
+                      {adminData.reports.map(r=>(
+                        <div key={r.id} style={{background:C.card,borderRadius:12,border:`1.5px solid #FCA5A5`,padding:"14px 16px"}}>
+                          <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:4}}>{r.community_recipes?.recipes?.name||"Unknown recipe"}</div>
+                          <div style={{fontSize:12,color:C.muted,marginBottom:4}}>Category: {r.community_recipes?.recipes?.category} · Reported by: {r.profiles?.name||r.profiles?.email}</div>
+                          <div style={{fontSize:12,color:C.red,marginBottom:10,background:"#FEF2F2",padding:"6px 10px",borderRadius:6}}>"{r.reason}"</div>
+                          <div style={{display:"flex",gap:8}}>
+                            <button style={{...btnStyle(C.red),fontSize:12,padding:"7px 14px"}} onClick={()=>resolveReport(r.id,r.community_recipe_id,r.community_recipes?.recipes?.name,true)}>
+                              Remove Recipe & Resolve
+                            </button>
+                            <button style={{padding:"7px 14px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",fontSize:12,cursor:"pointer",color:C.muted,fontWeight:600}} onClick={()=>resolveReport(r.id,r.community_recipe_id,r.community_recipes?.recipes?.name,false)}>
+                              Dismiss Report
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── BLOCKED TAB ── */}
+                  {adminTab==="blocked"&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{fontSize:13,color:C.muted,marginBottom:4}}>{adminData.blocked.length} recipes blocked by AI moderation</div>
+                      {adminData.blocked.length===0&&(
+                        <div style={{textAlign:"center",padding:"32px 0",color:C.green,fontSize:14,fontWeight:600}}>✅ No blocked recipes yet.</div>
+                      )}
+                      {adminData.blocked.map(b=>(
+                        <div key={b.id} style={{background:C.card,borderRadius:12,border:`1.5px solid #FCA5A5`,padding:"14px 16px"}}>
+                          <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:4}}>{b.recipe_name}</div>
+                          <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Category: {b.category} · Submitted by: {b.profiles?.name||b.profiles?.email} · {new Date(b.created_at).toLocaleDateString()}</div>
+                          <div style={{fontSize:12,color:C.red,background:"#FEF2F2",padding:"8px 12px",borderRadius:6,marginBottom:8}}>
+                            <strong>AI reason:</strong> {b.reason}
+                          </div>
+                          <div style={{fontSize:11,color:C.muted}}>Ingredients: {Array.isArray(b.ingredients)?b.ingredients.map(i=>i.item).join(", "):"N/A"}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── USERS TAB ── */}
+                  {adminTab==="users"&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <div style={{fontSize:13,color:C.muted,marginBottom:4}}>{adminData.users.length} total accounts</div>
+                      {adminData.users.map(u=>(
+                        <div key={u.id} style={{background:C.card,borderRadius:10,border:`1.5px solid ${C.border}`,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                          <div style={{width:36,height:36,borderRadius:"50%",background:u.tier==="paid"?C.accent:u.tier==="trial"?C.gold:C.border,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",flexShrink:0}}>
+                            {(u.name||u.email||"?")[0].toUpperCase()}
+                          </div>
+                          <div style={{flex:1,minWidth:160}}>
+                            <div style={{fontWeight:700,fontSize:13,color:C.text}}>{u.name||"No name"}</div>
+                            <div style={{fontSize:11,color:C.muted}}>{u.email}</div>
+                          </div>
+                          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                            <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,fontWeight:700,
+                              background:u.tier==="paid"?"#D1FAE5":u.tier==="trial"?"#FEF9C3":"#F3F4F6",
+                              color:u.tier==="paid"?"#065F46":u.tier==="trial"?"#78350F":"#6B7280"}}>
+                              {u.tier==="paid"?"✅ Paid":u.tier==="trial"?"✨ Trial":"Free"}
+                            </span>
+                            {u.family_role&&<span style={{fontSize:11,color:C.muted,fontWeight:600}}>{u.family_role}</span>}
+                            <span style={{fontSize:11,color:C.muted}}>{new Date(u.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {screen==="tour"&&(()=>{
         const steps = [
           {
             icon:"🏡", title:"Welcome to Anderson Heirloom Recipes",
