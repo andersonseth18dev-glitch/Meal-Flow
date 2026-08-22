@@ -1211,7 +1211,54 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
                   <div style={{fontSize:14,color:"#E8F5EE",fontWeight:700}}>Filter Recipes</div>
                   <button onClick={()=>setMobileFilterOpen(false)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,0.7)",fontSize:20,cursor:"pointer"}}>✕</button>
                 </div>
-                <div style={{padding:"14px 12px",flex:1}}>SIDEBAR_CONTENT_PLACEHOLDER</div>
+                <div style={{padding:"14px 12px",flex:1}}>
+                  {/* Search */}
+                  <input
+                    style={{width:"100%",padding:"8px 10px",background:"#fff",border:`1.5px solid #C5DDD3`,borderRadius:8,color:C.text,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:14}}
+                    placeholder="Search recipes..."
+                    value={search}
+                    onChange={e=>setSearch(e.target.value)}
+                  />
+                  {/* Diet */}
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:10,fontWeight:700,color:C.navy,letterSpacing:1.2,textTransform:"uppercase",marginBottom:8}}>Diet</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {DIETS.map(d=>(
+                        <button key={d} onClick={()=>{setActiveDiet(d);setMobileFilterOpen(false);}} style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${activeDiet===d?C.accent:C.border}`,background:activeDiet===d?C.accent:"transparent",color:activeDiet===d?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:activeDiet===d?700:400}}>
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Category */}
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:10,fontWeight:700,color:C.navy,letterSpacing:1.2,textTransform:"uppercase",marginBottom:8}}>Category</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {CATEGORIES.map(c=>(
+                        <button key={c} onClick={()=>{setActiveCategory(c);setMobileFilterOpen(false);}} style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${activeCategory===c?C.accent2:C.border}`,background:activeCategory===c?C.accent2:"transparent",color:activeCategory===c?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:activeCategory===c?700:400,display:"flex",alignItems:"center",gap:4}}>
+                          <span>{CAT_EMOJI[c]}</span><span>{c}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Collections */}
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:700,color:C.navy,letterSpacing:1.2,textTransform:"uppercase",marginBottom:8}}>Collections</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {["All",...allCollections].map(c=>(
+                        <button key={c} onClick={()=>{setActiveCollection(c);setMobileFilterOpen(false);}} style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${activeCollection===c?C.gold:C.border}`,background:activeCollection===c?C.gold:"transparent",color:activeCollection===c?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:activeCollection===c?700:400}}>
+                          {c==="All"?"📚 All":c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Clear filters */}
+                  {(activeDiet!=="All"||activeCategory!=="All"||activeCollection!=="All"||search)&&(
+                    <button onClick={()=>{setActiveDiet("All");setActiveCategory("All");setActiveCollection("All");setSearch("");setMobileFilterOpen(false);}} style={{width:"100%",padding:"10px 0",borderRadius:8,border:`1px dashed #C5DDD3`,background:"transparent",color:C.muted,fontSize:13,cursor:"pointer",fontWeight:500,marginTop:4}}>
+                      ✕ Clear all filters
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1473,43 +1520,77 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
       )}
 
       {screen==="planner"&&(
-        <div style={{padding:16}}>
+        <div style={{padding:isMobile?"10px 10px":"16px"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-            <div style={{fontWeight:900,fontSize:20,color:C.text}}>📅 Weekly Meal Planner</div>
-            {plannedCount>0&&<button style={{...btnStyle(C.green),fontSize:12,padding:"8px 14px"}} onClick={printMealPlan}>🖨️ Print Plan</button>}
+            <div style={{fontWeight:900,fontSize:isMobile?16:20,color:C.text}}>📅 Weekly Meal Planner</div>
+            {plannedCount>0&&<button style={{...btnStyle(C.green),fontSize:12,padding:"8px 14px"}} onClick={printMealPlan}>🖨️ Print</button>}
           </div>
           {!session&&<div style={{background:"#EEF6F1",border:`1.5px solid #C5DDD3`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,color:C.muted}}>💡 <strong>Sign in</strong> to save your meal plan across devices!</div>}
-          <div style={{fontSize:13,color:C.muted,marginBottom:14}}>Tap any empty slot to add a recipe.</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Tap any empty slot to add a recipe.</div>
+
+          {/* Nutrition summary */}
           {plannedCount>0&&(
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:16}}>
-              {[{l:"Calories",v:weeklyNutrition.calories,u:"",c:C.accent},{l:"Protein",v:weeklyNutrition.protein,u:"g",c:C.green},{l:"Carbs",v:weeklyNutrition.carbs,u:"g",c:C.peach},{l:"Fat",v:weeklyNutrition.fat,u:"g",c:C.red}].map(n=>(
-                <div key={n.l} style={{...statCard,background:"#F0F7F3"}}>
-                  <div style={{fontSize:16,fontWeight:900,color:n.c}}>{n.v}{n.u}</div>
-                  <div style={{fontSize:10,color:C.muted}}>{n.l}/week</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:isMobile?4:8,marginBottom:12}}>
+              {[{l:"Cal",v:weeklyNutrition.calories,c:C.accent},{l:"Protein",v:weeklyNutrition.protein+"g",c:C.green},{l:"Carbs",v:weeklyNutrition.carbs+"g",c:C.peach},{l:"Fat",v:weeklyNutrition.fat+"g",c:C.red}].map(n=>(
+                <div key={n.l} style={{background:"#F0F7F3",borderRadius:8,padding:isMobile?"6px 4px":"10px 8px",textAlign:"center",border:`1px solid #C5DDD3`}}>
+                  <div style={{fontSize:isMobile?13:16,fontWeight:900,color:n.c}}>{n.v}</div>
+                  <div style={{fontSize:isMobile?9:10,color:C.muted}}>{n.l}/wk</div>
                 </div>
               ))}
             </div>
           )}
-          <div style={{overflowX:"auto"}}>
-            <div style={{minWidth:520}}>
-              <div style={{display:"grid",gridTemplateColumns:"84px repeat(3,1fr)",gap:2,marginBottom:2}}>
-                <div/>{MEAL_SLOTS.map(sl=><div key={sl} style={{fontSize:11,fontWeight:700,color:C.muted,textAlign:"center",padding:"6px 0"}}>{sl}</div>)}
-              </div>
+
+          {/* MOBILE: day-by-day stacked layout */}
+          {isMobile?(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {DAYS.map(day=>(
-                <div key={day} style={{display:"grid",gridTemplateColumns:"84px repeat(3,1fr)",gap:2,marginBottom:2}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.muted,display:"flex",alignItems:"center",paddingLeft:4}}>{day.slice(0,3)}</div>
-                  {MEAL_SLOTS.map(slot=>{
-                    const key=`${day}-${slot}`;const recipe=mealPlan[key];
-                    return (
-                      <div key={slot} style={{background:recipe?"#EEF6F1":"#FDFAF7",border:`1.5px solid ${recipe?C.accent:C.border}`,borderRadius:8,padding:8,minHeight:54,cursor:"pointer"}} onClick={()=>!recipe&&setPlanPickerOpen({day,slot})}>
-                        {recipe?(<div><div style={{fontSize:18}}>{recipe.emoji}</div><div style={{fontSize:10,fontWeight:700,lineHeight:1.2,marginBottom:3,color:C.text}}>{recipe.name.length>22?recipe.name.slice(0,22)+"…":recipe.name}</div><div style={{fontSize:9,color:C.muted}}>🔥{recipe.calories}cal</div><button onClick={e=>{e.stopPropagation();removeFromPlan(key);}} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:9,padding:0,marginTop:2}}>✕ remove</button></div>):(<div style={{color:"#A8C5B5",textAlign:"center",lineHeight:"38px",fontSize:20,fontWeight:700}}>+</div>)}
-                      </div>
-                    );
-                  })}
+                <div key={day} style={{background:C.card,borderRadius:10,border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
+                  <div style={{background:C.navy,padding:"6px 12px",fontSize:12,fontWeight:700,color:"#fff"}}>{day}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:C.border}}>
+                    {MEAL_SLOTS.map(slot=>{
+                      const key=`${day}-${slot}`;const recipe=mealPlan[key];
+                      return(
+                        <div key={slot} style={{background:recipe?"#EEF6F1":C.card,padding:"8px 6px",minHeight:60,cursor:"pointer",display:"flex",flexDirection:"column",justifyContent:"space-between"}} onClick={()=>!recipe&&setPlanPickerOpen({day,slot})}>
+                          <div style={{fontSize:9,fontWeight:700,color:C.muted,marginBottom:4}}>{slot}</div>
+                          {recipe?(
+                            <div>
+                              <div style={{fontSize:16}}>{recipe.emoji}</div>
+                              <div style={{fontSize:9,fontWeight:700,lineHeight:1.2,color:C.text,marginBottom:2}}>{recipe.name.length>18?recipe.name.slice(0,18)+"…":recipe.name}</div>
+                              <button onClick={e=>{e.stopPropagation();removeFromPlan(key);}} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:9,padding:0}}>✕</button>
+                            </div>
+                          ):(
+                            <div style={{color:"#A8C5B5",fontSize:20,fontWeight:700,textAlign:"center"}}>+</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+          ):(
+            /* DESKTOP: original grid layout */
+            <div style={{overflowX:"auto"}}>
+              <div style={{minWidth:520}}>
+                <div style={{display:"grid",gridTemplateColumns:"84px repeat(3,1fr)",gap:2,marginBottom:2}}>
+                  <div/>{MEAL_SLOTS.map(sl=><div key={sl} style={{fontSize:11,fontWeight:700,color:C.muted,textAlign:"center",padding:"6px 0"}}>{sl}</div>)}
+                </div>
+                {DAYS.map(day=>(
+                  <div key={day} style={{display:"grid",gridTemplateColumns:"84px repeat(3,1fr)",gap:2,marginBottom:2}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.muted,display:"flex",alignItems:"center",paddingLeft:4}}>{day.slice(0,3)}</div>
+                    {MEAL_SLOTS.map(slot=>{
+                      const key=`${day}-${slot}`;const recipe=mealPlan[key];
+                      return (
+                        <div key={slot} style={{background:recipe?"#EEF6F1":"#FDFAF7",border:`1.5px solid ${recipe?C.accent:C.border}`,borderRadius:8,padding:8,minHeight:54,cursor:"pointer"}} onClick={()=>!recipe&&setPlanPickerOpen({day,slot})}>
+                          {recipe?(<div><div style={{fontSize:18}}>{recipe.emoji}</div><div style={{fontSize:10,fontWeight:700,lineHeight:1.2,marginBottom:3,color:C.text}}>{recipe.name.length>22?recipe.name.slice(0,22)+"…":recipe.name}</div><div style={{fontSize:9,color:C.muted}}>🔥{recipe.calories}cal</div><button onClick={e=>{e.stopPropagation();removeFromPlan(key);}} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:9,padding:0,marginTop:2}}>✕ remove</button></div>):(<div style={{color:"#A8C5B5",textAlign:"center",lineHeight:"38px",fontSize:20,fontWeight:700}}>+</div>)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
