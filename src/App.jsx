@@ -120,6 +120,8 @@ export default function App() {
   const [manualRecipe,    setManualRecipe]    = useState({ name:"",time:"",baseServings:4,calories:"",protein:"",carbs:"",fat:"",categories:[],collection:"None",tags:[],desc:"",ingredients:[{item:"",qty:"",unit:""}],steps:[""] });
 
   const [authOpen,      setAuthOpen]      = useState(false);
+  const [onboarding,    setOnboarding]    = useState(false);
+  const [onboardStep,   setOnboardStep]   = useState(0);
   const [familyMembers,        setFamilyMembers]        = useState([]);
   const [familyMembersLoading, setFamilyMembersLoading] = useState(false);
   const [authMode,  setAuthMode]  = useState("login");
@@ -268,6 +270,8 @@ export default function App() {
         showToast(`Welcome to the ${savedFamilyData.name}! 🎉`);
       } else {
         showToast("Account created! Welcome to Anderson Heirloom Recipes! 🎉");
+        // Trigger onboarding for brand new accounts
+        setTimeout(()=>{ setOnboarding(true); setOnboardStep(0); }, 400);
       }
       setAuthForm({name:"",email:"",password:"",familyCode:""});
       setAuthOpen(false);
@@ -1504,6 +1508,164 @@ Return an array: [recipe1, recipe2, recipe3, recipe4]`;
           </div>
         );
       })()}
+
+      {/* ── ONBOARDING MODAL ── */}
+      {onboarding&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(14,30,22,0.88)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:C.card,borderRadius:20,padding:"32px 28px",width:"100%",maxWidth:460,border:`1.5px solid ${C.border}`,boxShadow:"0 24px 80px rgba(14,30,22,0.3)"}}>
+
+            {/* Progress dots */}
+            <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:28}}>
+              {[0,1,2,3].map(i=>(
+                <div key={i} style={{width:i===onboardStep?24:8,height:8,borderRadius:4,background:i===onboardStep?C.accent:C.border,transition:"all 0.3s"}}/>
+              ))}
+            </div>
+
+            {/* ── STEP 0: WELCOME ── */}
+            {onboardStep===0&&(
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:52,marginBottom:16}}>🏡</div>
+                <div style={{fontWeight:900,fontSize:22,color:C.text,marginBottom:8}}>Welcome to the Family!</div>
+                <div style={{fontSize:14,color:C.muted,lineHeight:1.8,marginBottom:24}}>
+                  Anderson Heirloom Recipes is your family's private kitchen — a place to collect, share, and pass down the recipes that matter most.
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:28,textAlign:"left"}}>
+                  {[
+                    {e:"🍽️",t:"275 recipes to explore",d:"Browse our curated collection of family favorites across every category"},
+                    {e:"📅",t:"Plan your week",d:"Drag recipes into your weekly meal planner and auto-generate your grocery list"},
+                    {e:"👨‍👩‍👧‍👦",t:"Built for families",d:"Share your private recipe vault with everyone under your family plan"},
+                  ].map(f=>(
+                    <div key={f.t} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"10px 14px",background:"#F0F7F3",borderRadius:10}}>
+                      <span style={{fontSize:20}}>{f.e}</span>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13,color:C.text}}>{f.t}</div>
+                        <div style={{fontSize:12,color:C.muted,marginTop:2}}>{f.d}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button style={{...btnStyle(),width:"100%",padding:"13px 0",fontSize:15,fontWeight:800}} onClick={()=>setOnboardStep(1)}>
+                  Let's Get Started →
+                </button>
+                <button style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",marginTop:12}} onClick={()=>setOnboarding(false)}>
+                  Skip for now
+                </button>
+              </div>
+            )}
+
+            {/* ── STEP 1: SET YOUR NAME ── */}
+            {onboardStep===1&&(
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:48,marginBottom:12}}>👤</div>
+                <div style={{fontWeight:900,fontSize:20,color:C.text,marginBottom:6}}>What should we call you?</div>
+                <div style={{fontSize:13,color:C.muted,marginBottom:20}}>This is how you'll appear to your family members and on shared recipes.</div>
+                <input
+                  style={{width:"100%",padding:"12px 16px",background:"#FDFAF7",border:`1.5px solid ${C.border}`,borderRadius:12,color:C.text,fontSize:16,outline:"none",boxSizing:"border-box",textAlign:"center",fontWeight:600,marginBottom:20}}
+                  placeholder="e.g. Seth or Dad"
+                  defaultValue={profile?.name||""}
+                  id="onboard-name-input"
+                  autoFocus
+                />
+                <button style={{...btnStyle(),width:"100%",padding:"13px 0",fontSize:15,fontWeight:800}} onClick={async()=>{
+                  const nameVal = document.getElementById("onboard-name-input").value.trim();
+                  if(nameVal && session) {
+                    await supabase.from("profiles").update({name:nameVal}).eq("id",session.user.id);
+                    setProfile(p=>({...p,name:nameVal}));
+                  }
+                  setOnboardStep(2);
+                }}>
+                  Save & Continue →
+                </button>
+                <button style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",marginTop:12}} onClick={()=>setOnboardStep(2)}>
+                  Skip for now
+                </button>
+              </div>
+            )}
+
+            {/* ── STEP 2: DIET PREFERENCES ── */}
+            {onboardStep===2&&(
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:48,marginBottom:12}}>🥗</div>
+                <div style={{fontWeight:900,fontSize:20,color:C.text,marginBottom:6}}>Any dietary preferences?</div>
+                <div style={{fontSize:13,color:C.muted,marginBottom:20}}>We'll use these to filter recipes for you. You can always change these later.</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:24}}>
+                  {["Keto","Vegetarian","Vegan","Gluten-Free","Dairy-Free","Paleo"].map(d=>{
+                    const active=(profile?.diet_prefs||[]).includes(d);
+                    return(
+                      <button key={d} onClick={async()=>{
+                        const cur=profile?.diet_prefs||[];
+                        const next=active?cur.filter(x=>x!==d):[...cur,d];
+                        await supabase.from("profiles").update({diet_prefs:next}).eq("id",session.user.id);
+                        setProfile(p=>({...p,diet_prefs:next}));
+                      }} style={{padding:"10px 18px",borderRadius:24,border:`1.5px solid ${active?C.accent:C.border}`,background:active?"#D1FAE5":"transparent",color:active?C.accent:C.muted,fontSize:13,cursor:"pointer",fontWeight:active?700:400,transition:"all 0.15s"}}>
+                        {active?"✓ ":""}{d}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button style={{...btnStyle(),width:"100%",padding:"13px 0",fontSize:15,fontWeight:800}} onClick={()=>setOnboardStep(3)}>
+                  Continue →
+                </button>
+                <button style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",marginTop:12}} onClick={()=>setOnboardStep(3)}>
+                  Skip for now
+                </button>
+              </div>
+            )}
+
+            {/* ── STEP 3: UPGRADE OR FAMILY CODE ── */}
+            {onboardStep===3&&(
+              <div style={{textAlign:"center"}}>
+                {isPaidTier()?(
+                  <>
+                    <div style={{fontSize:52,marginBottom:12}}>🎉</div>
+                    <div style={{fontWeight:900,fontSize:20,color:C.text,marginBottom:8}}>You're all set!</div>
+                    <div style={{fontSize:13,color:C.muted,marginBottom:20,lineHeight:1.7}}>
+                      Your Family Plan is active. Share your family code with loved ones so they can join your private recipe vault.
+                    </div>
+                    <div style={{background:"#F0F7F3",borderRadius:12,padding:"16px",marginBottom:20,border:`1px solid #C5DDD3`}}>
+                      <div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>Your Family Code</div>
+                      <div style={{fontFamily:"monospace",fontSize:24,fontWeight:900,color:C.accent,letterSpacing:3}}>{profile?.families?.family_code||"Loading..."}</div>
+                      <div style={{fontSize:11,color:C.muted,marginTop:4}}>Share this with family members when they sign up</div>
+                    </div>
+                    <button style={{...btnStyle(),width:"100%",padding:"13px 0",fontSize:15,fontWeight:800}} onClick={()=>setOnboarding(false)}>
+                      Start Exploring Recipes 🍽️
+                    </button>
+                  </>
+                ):(
+                  <>
+                    <div style={{fontSize:52,marginBottom:12}}>✨</div>
+                    <div style={{fontWeight:900,fontSize:20,color:C.text,marginBottom:8}}>Ready to unlock everything?</div>
+                    <div style={{fontSize:13,color:C.muted,marginBottom:20,lineHeight:1.7}}>
+                      Upgrade to a Family Plan and get unlimited recipes, your private family vault, and a 14-day free trial.
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
+                      {["🍽️ Unlimited recipe adding","🔒 Private family recipe vault","🌍 Community recipe page","👨‍👩‍👧‍👦 Up to 2 family members included","14-day free trial — cancel anytime"].map(f=>(
+                        <div key={f} style={{fontSize:13,color:C.text,display:"flex",gap:8,alignItems:"center",textAlign:"left"}}>
+                          <span style={{color:C.green,fontWeight:700}}>✓</span>{f}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                      <button style={{...btnStyle(),padding:"12px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:2}} onClick={()=>{setOnboarding(false);startCheckout("family_monthly");}}>
+                        <span style={{fontWeight:800,fontSize:14}}>$15 / month</span>
+                        <span style={{fontSize:11,opacity:0.85}}>Start free trial</span>
+                      </button>
+                      <button style={{...btnStyle(C.accent2),padding:"12px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:2}} onClick={()=>{setOnboarding(false);startCheckout("family_annual");}}>
+                        <span style={{fontWeight:800,fontSize:14}}>$120 / year</span>
+                        <span style={{fontSize:11,opacity:0.85}}>Save $60 🎉</span>
+                      </button>
+                    </div>
+                    <button style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer"}} onClick={()=>setOnboarding(false)}>
+                      Maybe later — continue with free account
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
 
       {/* ── AUTH MODAL ── */}
       {authOpen&&(
